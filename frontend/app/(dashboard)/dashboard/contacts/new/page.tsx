@@ -136,9 +136,9 @@ export default function NewContactPage() {
         (body as any).designation_title = designationTitle || null;
         (body as any).visa_expiry_date = visaExpiryDate || null;
       }
-      await api.post("/api/contacts/", body);
+      const created: any = await api.post("/api/contacts/", body);
       toast.success("Contact created successfully");
-      window.location.href = "/dashboard/contacts";
+      window.location.href = created?.id ? `/dashboard/contacts/${created.id}` : "/dashboard/contacts";
     } catch (err: any) {
       const msg = err.message || "Failed to create contact";
       setError(msg);

@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { getMe } from "@/lib/auth";
 import { useToast } from "@/components/Toast";
 import { Icon } from "@/components/ui/Icon";
 import { Pill } from "@/components/ui/Pill";
@@ -121,15 +122,19 @@ export default function TasksTab({
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [users, setUsers] = useState<UserOption[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string>("");
 
   // Activity state
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [showNewActivity, setShowNewActivity] = useState(false);
-  const [newAct, setNewAct] = useState({ title: "", description: "", activity_type: "call", assigned_to: "", start_datetime: "", end_datetime: "", location: "", reminder: "none", recurrence: "none" });
+  const [newAct, setNewAct] = useState({ title: "", description: "", activity_type: "call", assigned_to_ids: [] as string[], start_datetime: "", end_datetime: "", location: "", reminder: "none", recurrence: "none" });
   const [completionModal, setCompletionModal] = useState<{ id: string; title: string } | null>(null);
   const [completionNotes, setCompletionNotes] = useState("");
 
-  useEffect(() => { loadUsers(); loadActivities(); }, []);
+  useEffect(() => {
+    loadUsers(); loadActivities();
+    getMe().then((u) => setCurrentUserId(u.id)).catch(() => {});
+  }, []);
 
   async function loadUsers() {
     try { const res = await api.get("/api/users/") as any[]; setUsers(res.map((u: any) => ({ id: u.id, full_name: u.full_name }))); } catch {}
@@ -139,6 +144,14 @@ export default function TasksTab({
     try { const res = await api.get(`/api/activities/project/${projectId}`) as ActivityItem[]; setActivities(res); } catch {}
   }
 
+  function openNewActivityForm() {
+    const now = new Date();
+    const localISO = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    const endISO = new Date(now.getTime() - now.getTimezoneOffset() * 60000 + 3600000).toISOString().slice(0, 16);
+    setNewAct({ title: "", description: "", activity_type: "call", assigned_to_ids: currentUserId ? [currentUserId] : [], start_datetime: localISO, end_datetime: endISO, location: "", reminder: "none", recurrence: "none" });
+    setShowNewActivity(true);
+  }
+
   async function handleCreateActivity(e: React.FormEvent) {
     e.preventDefault();
     try {
@@ -146,14 +159,14 @@ export default function TasksTab({
         title: newAct.title,
         description: newAct.description || undefined,
         activity_type: newAct.activity_type,
-        assigned_to: newAct.assigned_to || undefined,
+        assigned_to_ids: newAct.assigned_to_ids,
         start_datetime: newAct.start_datetime,
         end_datetime: newAct.end_datetime,
         location: newAct.location || undefined,
         reminder: newAct.reminder,
         recurrence: newAct.recurrence,
       });
-      setNewAct({ title: "", description: "", activity_type: "call", assigned_to: "", start_datetime: "", end_datetime: "", location: "", reminder: "none", recurrence: "none" });
+      setNewAct({ title: "", description: "", activity_type: "call", assigned_to_ids: [], start_datetime: "", end_datetime: "", location: "", reminder: "none", recurrence: "none" });
       setShowNewActivity(false);
       loadActivities();
       toast.success("Activity created");
@@ -551,7 +564,7 @@ export default function TasksTab({
             <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-quaternary)" }}>Scheduled Activities</span>
             <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-tertiary)", background: "var(--bg-tertiary)", padding: "2px 8px", borderRadius: "var(--radius-full)" }}>{activities.length}</span>
           </div>
-          <button className="btn-primary btn-sm" onClick={() => setShowNewActivity(true)}>
+          <button className="btn-primary btn-sm" onClick={openNewActivityForm}>
             <Icon path="M12 4v16m8-8H4" size={14} /> Add Activity
           </button>
         </div>
@@ -663,10 +676,18 @@ export default function TasksTab({
             <div style={{ marginBottom: 14 }}><FormField label="Location"><input type="text" value={newAct.location} onChange={(e) => setNewAct({ ...newAct, location: e.target.value })} placeholder="Optional" style={{ margin: 0 }} /></FormField></div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
               <FormField label="Assign To">
-                <select value={newAct.assigned_to} onChange={(e) => setNewAct({ ...newAct, assigned_to: e.target.value })} style={{ margin: 0 }}>
-                  <option value="">— Select —</option>
-                  {users.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-                </select>
+                <div style={{ border: "1px solid var(--border-primary)", borderRadius: "var(--radius-md)", padding: "6px 8px", maxHeight: 120, overflowY: "auto", background: "var(--bg-secondary)" }}>
+                  {users.map((u) => (
+                    <label key={u.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 4px", cursor: "pointer", fontSize: 13 }}>
+                      <input type="checkbox" checked={newAct.assigned_to_ids.includes(u.id)} onChange={(e) => {
+                        const ids = e.target.checked ? [...newAct.assigned_to_ids, u.id] : newAct.assigned_to_ids.filter((id) => id !== u.id);
+                        setNewAct({ ...newAct, assigned_to_ids: ids });
+                      }} />
+                      {u.full_name}
+                    </label>
+                  ))}
+                  {users.length === 0 && <span style={{ fontSize: 12, color: "var(--text-quaternary)" }}>No users available</span>}
+                </div>
               </FormField>
               <FormField label="Reminder">
                 <select value={newAct.reminder} onChange={(e) => setNewAct({ ...newAct, reminder: e.target.value })} style={{ margin: 0 }}>

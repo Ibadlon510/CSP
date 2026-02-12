@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@hello-pangea/dnd": "^18.0.1",
+    "@types/dagre": "^0.7.53",
     "@xyflow/react": "^12.10.0",
+    "dagre": "^0.8.5",
     "next": "14.2.18",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"

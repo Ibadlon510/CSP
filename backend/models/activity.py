@@ -1,5 +1,5 @@
 """Activity model — lightweight scheduled events linked to projects."""
-from sqlalchemy import Column, String, Text, ForeignKey, Enum as SQLEnum, DateTime, Boolean
+from sqlalchemy import Column, String, Text, ForeignKey, Enum as SQLEnum, DateTime, Boolean, PrimaryKeyConstraint
 from sqlalchemy.orm import relationship
 from core.database import Base
 from models.base import TimestampMixin, generate_uuid
@@ -76,6 +76,19 @@ class Activity(Base, TimestampMixin):
     contact = relationship("Contact")
     assignee = relationship("User", foreign_keys=[assigned_to])
     creator = relationship("User", foreign_keys=[created_by])
+    activity_assignees = relationship("ActivityAssignee", back_populates="activity", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Activity(id={self.id}, title={self.title}, type={self.activity_type})>"
+
+
+class ActivityAssignee(Base):
+    """M2M: activity <-> user (multiple assignees per activity)."""
+    __tablename__ = "activity_assignees"
+    __table_args__ = (PrimaryKeyConstraint("activity_id", "user_id"),)
+
+    activity_id = Column(String, ForeignKey("activities.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+
+    activity = relationship("Activity", back_populates="activity_assignees")
+    user = relationship("User")

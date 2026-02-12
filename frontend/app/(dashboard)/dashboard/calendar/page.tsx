@@ -1,11 +1,16 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
+import { getMe } from "@/lib/auth";
 import { useToast } from "@/components/Toast";
 import { Icon } from "@/components/ui/Icon";
 import { fmtDateTime } from "@/lib/format";
 import { SearchFilterBar, type FilterFieldConfig } from "@/components/ui/SearchFilterBar";
+import { PageViewToggle, type PageView } from "@/components/ui/PageViewToggle";
+import { SlideOverPanel } from "@/components/ui/SlideOverPanel";
+import { FormField } from "@/components/ui/FormField";
 
 type Activity = {
   id: string; org_id: string; project_id: string; contact_id?: string;
@@ -67,7 +72,10 @@ function formatDayHeader(d: Date) { return d.toLocaleDateString("en-US", { weekd
 
 export default function CalendarPage() {
   const toast = useToast();
-  const [view, setView] = useState<"month" | "week" | "day">("month");
+  const searchParams = useSearchParams();
+  const initialPageMode = searchParams.get("view") === "list" ? "list" : "calendar";
+  const [pageMode, setPageMode] = useState<"calendar" | "list">(initialPageMode);
+  const [calPeriod, setCalPeriod] = useState<"month" | "week" | "day">("month");
   const [currentDate, setCurrentDate] = useState(new Date());
   const [activities, setActivities] = useState<Activity[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
@@ -77,9 +85,10 @@ export default function CalendarPage() {
   const [groupBy, setGroupBy] = useState("");
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
   const [showNewActivity, setShowNewActivity] = useState(false);
-  const [newAct, setNewAct] = useState({ title: "", description: "", activity_type: "call", assigned_to: "", project_id: "", start_datetime: "", end_datetime: "", location: "", reminder: "none", recurrence: "none" });
+  const [newAct, setNewAct] = useState({ title: "", description: "", activity_type: "call", assigned_to_ids: [] as string[], project_id: "", start_datetime: "", end_datetime: "", location: "", reminder: "none", recurrence: "none" });
   const [completionModal, setCompletionModal] = useState<Activity | null>(null);
   const [completionNotes, setCompletionNotes] = useState("");
+  const [currentUserId, setCurrentUserId] = useState<string>("");
 
   const assigneeColorMap = useMemo(() => {
     const map: Record<string, typeof ASSIGNEE_COLORS[0]> = {};
@@ -90,16 +99,17 @@ export default function CalendarPage() {
   useEffect(() => {
     api.get("/api/users/").then((r: any) => setUsers((r as any[]).map(u => ({ id: u.id, full_name: u.full_name })))).catch(() => {});
     api.get("/api/projects/").then((r: any) => setProjects((r as any[]).map(p => ({ id: p.id, title: p.title })))).catch(() => {});
+    getMe().then((u) => setCurrentUserId(u.id)).catch(() => {});
   }, []);
 
-  useEffect(() => { loadActivities(); }, [currentDate, view]);
+  useEffect(() => { loadActivities(); }, [currentDate, pageMode, calPeriod]);
 
   function getDateRange(): [string, string] {
-    if (view === "month") {
+    if (pageMode === "list" || calPeriod === "month") {
       const s = startOfWeek(startOfMonth(currentDate));
       const e = addDays(startOfWeek(addDays(endOfMonth(currentDate), 1)), 6);
       return [s.toISOString(), e.toISOString()];
-    } else if (view === "week") {
+    } else if (calPeriod === "week") {
       const s = startOfWeek(currentDate);
       return [s.toISOString(), addDays(s, 7).toISOString()];
     }
@@ -143,8 +153,8 @@ export default function CalendarPage() {
 
   function navigate(dir: -1 | 1) {
     const d = new Date(currentDate);
-    if (view === "month") d.setMonth(d.getMonth() + dir);
-    else if (view === "week") d.setDate(d.getDate() + 7 * dir);
+    if (pageMode === "list" || calPeriod === "month") d.setMonth(d.getMonth() + dir);
+    else if (calPeriod === "week") d.setDate(d.getDate() + 7 * dir);
     else d.setDate(d.getDate() + dir);
     setCurrentDate(d);
   }
@@ -152,17 +162,25 @@ export default function CalendarPage() {
   function actsForDay(date: Date) { return filteredActivities.filter(a => isSameDay(new Date(a.start_datetime), date)); }
   function getColor(uid?: string) { return uid && assigneeColorMap[uid] ? assigneeColorMap[uid] : { color: "#64748b", bg: "#f1f5f9", border: "#e2e8f0" }; }
 
+  function openNewActivityForm() {
+    const now = new Date();
+    const localISO = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    const endISO = new Date(now.getTime() - now.getTimezoneOffset() * 60000 + 3600000).toISOString().slice(0, 16);
+    setNewAct({ title: "", description: "", activity_type: "call", assigned_to_ids: currentUserId ? [currentUserId] : [], project_id: "", start_datetime: localISO, end_datetime: endISO, location: "", reminder: "none", recurrence: "none" });
+    setShowNewActivity(true);
+  }
+
   async function handleCreateActivity(e: React.FormEvent) {
     e.preventDefault();
     if (!newAct.project_id) { toast.error("Select a project"); return; }
     try {
       await api.post(`/api/activities/project/${newAct.project_id}`, {
         title: newAct.title, description: newAct.description || undefined,
-        activity_type: newAct.activity_type, assigned_to: newAct.assigned_to || undefined,
+        activity_type: newAct.activity_type, assigned_to_ids: newAct.assigned_to_ids,
         start_datetime: newAct.start_datetime, end_datetime: newAct.end_datetime,
         location: newAct.location || undefined, reminder: newAct.reminder, recurrence: newAct.recurrence,
       });
-      setNewAct({ title: "", description: "", activity_type: "call", assigned_to: "", project_id: "", start_datetime: "", end_datetime: "", location: "", reminder: "none", recurrence: "none" });
+      setNewAct({ title: "", description: "", activity_type: "call", assigned_to_ids: [], project_id: "", start_datetime: "", end_datetime: "", location: "", reminder: "none", recurrence: "none" });
       setShowNewActivity(false); loadActivities(); toast.success("Activity created");
     } catch (err: any) { toast.error(err.message || "Failed"); }
   }
@@ -185,7 +203,12 @@ export default function CalendarPage() {
   }
 
   const today = new Date();
-  const headerLabel = view === "month" ? formatMonth(currentDate) : view === "week" ? formatWeekRange(currentDate) : formatDayHeader(currentDate);
+  const headerLabel = pageMode === "list" || calPeriod === "month" ? formatMonth(currentDate) : calPeriod === "week" ? formatWeekRange(currentDate) : formatDayHeader(currentDate);
+
+  const CALENDAR_PAGE_VIEWS: PageView[] = [
+    { key: "calendar", label: "Calendar", icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
+    { key: "list", label: "List", icon: "M3 10h18M3 14h18M3 6h18M3 18h18" },
+  ];
 
   // ─── Month View ───
   function renderMonthView() {
@@ -208,7 +231,7 @@ export default function CalendarPage() {
               const isCurMonth = day.getMonth() === currentDate.getMonth();
               const isToday = isSameDay(day, today);
               return (
-                <div key={di} onClick={() => { setCurrentDate(new Date(day)); setView("day"); }}
+                <div key={di} onClick={() => { setCurrentDate(new Date(day)); setCalPeriod("day"); }}
                   style={{ padding: "4px 6px", cursor: "pointer", border: "1px solid var(--border-secondary)", borderTop: "none", borderLeft: di === 0 ? "none" : undefined, borderRight: "none", background: isToday ? "var(--accent-blue-light)" : isCurMonth ? "var(--bg-secondary)" : "var(--bg-tertiary)", minHeight: 90 }}
                   onMouseEnter={e => { if (!isToday) e.currentTarget.style.background = "var(--bg-tertiary)"; }}
                   onMouseLeave={e => { if (!isToday) e.currentTarget.style.background = isToday ? "var(--accent-blue-light)" : isCurMonth ? "var(--bg-secondary)" : "var(--bg-tertiary)"; }}>
@@ -245,7 +268,7 @@ export default function CalendarPage() {
         {days.map((day, i) => {
           const isToday = isSameDay(day, today);
           return (
-            <div key={i} onClick={() => { setCurrentDate(new Date(day)); setView("day"); }}
+            <div key={i} onClick={() => { setCurrentDate(new Date(day)); setCalPeriod("day"); }}
               style={{ borderBottom: "2px solid var(--border-primary)", padding: "6px 4px", textAlign: "center", cursor: "pointer", background: isToday ? "var(--accent-blue-light)" : "transparent" }}>
               <div style={{ fontSize: 10, fontWeight: 600, color: "var(--text-quaternary)", textTransform: "uppercase" }}>{day.toLocaleDateString("en-US", { weekday: "short" })}</div>
               <div style={{ fontSize: 16, fontWeight: isToday ? 700 : 500, color: isToday ? "var(--brand-primary)" : "var(--text-primary)" }}>{day.getDate()}</div>
@@ -332,7 +355,7 @@ export default function CalendarPage() {
           <p className="page-subtitle">All scheduled activities across projects</p>
         </div>
         <div className="page-header-actions">
-          <button className="btn-primary" onClick={() => setShowNewActivity(true)} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <button className="btn-primary" onClick={openNewActivityForm} style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <Icon path="M12 4v16m8-8H4" size={16} color="#fff" /> Add Activity
           </button>
         </div>
@@ -346,10 +369,15 @@ export default function CalendarPage() {
           <button onClick={() => navigate(1)} style={{ background: "var(--bg-tertiary)", border: "1px solid var(--border-primary)", borderRadius: "var(--radius-sm)", padding: "6px 10px", cursor: "pointer", color: "var(--text-secondary)" }}><Icon path="M9 18l6-6-6-6" size={16} /></button>
           <h2 style={{ fontSize: 18, fontWeight: 700, color: "var(--text-primary)", marginLeft: 8 }}>{headerLabel}</h2>
         </div>
-        <div style={{ display: "flex", gap: 2, background: "var(--bg-tertiary)", borderRadius: "var(--radius-md)", padding: 2 }}>
-          {(["month", "week", "day"] as const).map(v => (
-            <button key={v} onClick={() => setView(v)} style={{ padding: "6px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer", borderRadius: "var(--radius-sm)", border: "none", background: view === v ? "var(--bg-secondary)" : "transparent", color: view === v ? "var(--text-primary)" : "var(--text-tertiary)", boxShadow: view === v ? "var(--shadow-xs)" : "none", textTransform: "capitalize" }}>{v}</button>
-          ))}
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {pageMode === "calendar" && (
+            <div style={{ display: "flex", gap: 2, background: "var(--bg-tertiary)", borderRadius: "var(--radius-md)", padding: 2 }}>
+              {(["month", "week", "day"] as const).map(v => (
+                <button key={v} onClick={() => setCalPeriod(v)} style={{ padding: "6px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer", borderRadius: "var(--radius-sm)", border: "none", background: calPeriod === v ? "var(--bg-secondary)" : "transparent", color: calPeriod === v ? "var(--text-primary)" : "var(--text-tertiary)", boxShadow: calPeriod === v ? "var(--shadow-xs)" : "none", textTransform: "capitalize" }}>{v}</button>
+              ))}
+            </div>
+          )}
+          <PageViewToggle value={pageMode} onChange={(v) => setPageMode(v as "calendar" | "list")} views={CALENDAR_PAGE_VIEWS} />
         </div>
       </div>
 
@@ -359,22 +387,65 @@ export default function CalendarPage() {
       </div>
 
       {/* Calendar Body */}
-      <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-primary)", borderRadius: "var(--radius-lg)", overflow: "hidden", boxShadow: "var(--shadow-xs)" }}>
-        {view === "month" && renderMonthView()}
-        {view === "week" && renderWeekView()}
-        {view === "day" && renderDayView()}
-      </div>
+      {pageMode === "list" ? (
+        <div className="table-container" style={{ boxShadow: "var(--shadow-xs)" }}>
+          <table>
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th style={{ width: 100 }}>Type</th>
+                <th style={{ width: 160 }}>Start</th>
+                <th style={{ width: 160 }}>End</th>
+                <th style={{ width: 140 }}>Assignee</th>
+                <th style={{ width: 160 }}>Project</th>
+                <th style={{ width: 90 }}>Status</th>
+                <th style={{ width: 70, textAlign: "right" }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredActivities.length === 0 ? (
+                <tr><td colSpan={8} style={{ textAlign: "center", padding: 32, color: "var(--text-quaternary)" }}>No activities found for this period.</td></tr>
+              ) : (
+                [...filteredActivities].sort((a, b) => new Date(a.start_datetime).getTime() - new Date(b.start_datetime).getTime()).map(a => {
+                  const typeCfg = ACTIVITY_TYPE_CFG[a.activity_type] || ACTIVITY_TYPE_CFG.other;
+                  const isOverdue = a.status === "pending" && a.is_overdue;
+                  return (
+                    <tr key={a.id} style={{ cursor: "pointer" }} onClick={() => setSelectedActivity(a)}>
+                      <td>
+                        <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{a.title}</span>
+                        {a.location && <span style={{ display: "block", fontSize: 11, color: "var(--text-tertiary)", marginTop: 2 }}>{a.location}</span>}
+                      </td>
+                      <td><Pill {...typeCfg} /></td>
+                      <td style={{ fontSize: 12, color: "var(--text-secondary)" }}>{fmtDateTime(a.start_datetime)}</td>
+                      <td style={{ fontSize: 12, color: "var(--text-secondary)" }}>{fmtDateTime(a.end_datetime)}</td>
+                      <td style={{ fontSize: 13, color: "var(--text-secondary)" }}>{a.assigned_to_name || "—"}</td>
+                      <td style={{ fontSize: 13, color: "var(--text-secondary)" }}>{a.project_title || "—"}</td>
+                      <td>
+                        <Pill
+                          label={a.status === "completed" ? "Completed" : isOverdue ? "Overdue" : "Pending"}
+                          color={a.status === "completed" ? "var(--success)" : isOverdue ? "var(--danger)" : "var(--info)"}
+                          bg={a.status === "completed" ? "var(--success-light)" : isOverdue ? "var(--danger-light)" : "var(--info-light)"}
+                        />
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        <button className="btn-ghost btn-sm" style={{ padding: 4, color: "var(--danger)" }} onClick={(e) => { e.stopPropagation(); deleteActivity(a.id); }} aria-label="Delete">
+                          <Icon path="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      ) : calPeriod === "month" ? renderMonthView() : calPeriod === "week" ? renderWeekView() : renderDayView()}
 
-      {/* Detail Side Panel */}
-      {selectedActivity && (
-        <>
-          <div onClick={() => setSelectedActivity(null)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)", zIndex: 1040 }} />
-          <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: 480, background: "var(--bg-secondary)", boxShadow: "var(--shadow-xl)", zIndex: 1050, display: "flex", flexDirection: "column" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 24px", borderBottom: "1px solid var(--border-primary)" }}>
-              <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{selectedActivity.title}</h3>
-              <button onClick={() => setSelectedActivity(null)} style={{ background: "var(--bg-tertiary)", border: "none", borderRadius: "var(--radius-sm)", padding: 6, cursor: "pointer", color: "var(--text-tertiary)", marginLeft: 8 }}><Icon path="M18 6L6 18M6 6l12 12" size={15} /></button>
-            </div>
-            <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
+      {/* Activity Detail SlidePanel */}
+      <SlideOverPanel open={!!selectedActivity} onClose={() => setSelectedActivity(null)} title={selectedActivity?.title || "Activity"} subtitle="Activity details">
+        {selectedActivity && (
+          <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+            <div style={{ flex: 1, overflowY: "auto", padding: "16px 0" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
                 <div><FieldLabel>Type</FieldLabel><Pill {...(ACTIVITY_TYPE_CFG[selectedActivity.activity_type] || ACTIVITY_TYPE_CFG.other)} /></div>
                 <div><FieldLabel>Status</FieldLabel>
@@ -395,7 +466,7 @@ export default function CalendarPage() {
               {selectedActivity.description && <div style={{ marginBottom: 20 }}><FieldLabel>Description</FieldLabel><p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6 }}>{selectedActivity.description}</p></div>}
               {selectedActivity.completion_notes && <div style={{ marginBottom: 20 }}><FieldLabel>Completion Notes</FieldLabel><p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6, fontStyle: "italic" }}>{selectedActivity.completion_notes}</p></div>}
             </div>
-            <div style={{ padding: "14px 24px", borderTop: "1px solid var(--border-primary)", display: "flex", gap: 10 }}>
+            <div style={{ display: "flex", gap: 10, paddingTop: 16, borderTop: "1px solid var(--border-primary)" }}>
               {selectedActivity.status === "pending" ? (
                 <button onClick={() => { setCompletionModal(selectedActivity); setCompletionNotes(""); }} style={{ flex: 1, background: "var(--success)", color: "#fff", border: "none", borderRadius: "var(--radius-md)", padding: "10px 0", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Mark Complete</button>
               ) : (
@@ -404,58 +475,74 @@ export default function CalendarPage() {
               <button onClick={() => deleteActivity(selectedActivity.id)} style={{ background: "var(--danger-light)", color: "var(--danger)", border: "none", borderRadius: "var(--radius-md)", padding: "10px 20px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Delete</button>
             </div>
           </div>
-        </>
-      )}
+        )}
+      </SlideOverPanel>
 
-      {/* New Activity Modal */}
-      {showNewActivity && (
-        <>
-          <div onClick={() => setShowNewActivity(false)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)", zIndex: 1060 }} />
-          <div style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", background: "var(--bg-secondary)", borderRadius: "var(--radius-lg)", padding: "24px 28px", boxShadow: "var(--shadow-xl)", zIndex: 1070, width: 560, maxWidth: "95vw", maxHeight: "90vh", overflowY: "auto" }}>
-            <h3 style={{ fontSize: 18, fontWeight: 700, color: "var(--text-primary)", marginBottom: 20 }}>New Activity</h3>
-            <form onSubmit={handleCreateActivity}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-                <div style={{ gridColumn: "1 / -1" }}><FieldLabel>Title *</FieldLabel><input type="text" value={newAct.title} onChange={e => setNewAct({ ...newAct, title: e.target.value })} required placeholder="Activity title" style={{ margin: 0 }} /></div>
-                <div><FieldLabel>Project *</FieldLabel>
-                  <select value={newAct.project_id} onChange={e => setNewAct({ ...newAct, project_id: e.target.value })} required style={{ margin: 0 }}>
-                    <option value="">— Select Project —</option>
-                    {projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
-                  </select>
-                </div>
-                <div><FieldLabel>Type</FieldLabel>
-                  <select value={newAct.activity_type} onChange={e => setNewAct({ ...newAct, activity_type: e.target.value })} style={{ margin: 0 }}>
-                    {Object.entries(ACTIVITY_TYPE_CFG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                  </select>
-                </div>
-                <div><FieldLabel>Start *</FieldLabel><input type="datetime-local" value={newAct.start_datetime} onChange={e => setNewAct({ ...newAct, start_datetime: e.target.value })} required style={{ margin: 0 }} /></div>
-                <div><FieldLabel>End *</FieldLabel><input type="datetime-local" value={newAct.end_datetime} onChange={e => setNewAct({ ...newAct, end_datetime: e.target.value })} required style={{ margin: 0 }} /></div>
-                <div><FieldLabel>Assign To</FieldLabel>
-                  <select value={newAct.assigned_to} onChange={e => setNewAct({ ...newAct, assigned_to: e.target.value })} style={{ margin: 0 }}>
-                    <option value="">— Select —</option>
-                    {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-                  </select>
-                </div>
-                <div><FieldLabel>Location</FieldLabel><input type="text" value={newAct.location} onChange={e => setNewAct({ ...newAct, location: e.target.value })} placeholder="Optional" style={{ margin: 0 }} /></div>
-                <div><FieldLabel>Reminder</FieldLabel>
-                  <select value={newAct.reminder} onChange={e => setNewAct({ ...newAct, reminder: e.target.value })} style={{ margin: 0 }}>
-                    {REMINDER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                </div>
-                <div><FieldLabel>Recurrence</FieldLabel>
-                  <select value={newAct.recurrence} onChange={e => setNewAct({ ...newAct, recurrence: e.target.value })} style={{ margin: 0 }}>
-                    {RECURRENCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                </div>
-                <div style={{ gridColumn: "1 / -1" }}><FieldLabel>Description</FieldLabel><textarea rows={2} value={newAct.description} onChange={e => setNewAct({ ...newAct, description: e.target.value })} placeholder="Optional" style={{ margin: 0 }} /></div>
+      {/* New Activity SlidePanel */}
+      <SlideOverPanel open={showNewActivity} onClose={() => setShowNewActivity(false)} title="New Activity" subtitle="Schedule a new activity">
+        <form onSubmit={handleCreateActivity} style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+          <div style={{ flex: 1, padding: "16px 0", overflowY: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
+            <FormField label="Title" required>
+              <input type="text" value={newAct.title} onChange={e => setNewAct({ ...newAct, title: e.target.value })} required placeholder="Activity title" style={{ margin: 0 }} />
+            </FormField>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <FormField label="Project" required>
+                <select value={newAct.project_id} onChange={e => setNewAct({ ...newAct, project_id: e.target.value })} required style={{ margin: 0 }}>
+                  <option value="">— Select —</option>
+                  {projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Type">
+                <select value={newAct.activity_type} onChange={e => setNewAct({ ...newAct, activity_type: e.target.value })} style={{ margin: 0 }}>
+                  {Object.entries(ACTIVITY_TYPE_CFG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Start" required>
+                <input type="datetime-local" value={newAct.start_datetime} onChange={e => setNewAct({ ...newAct, start_datetime: e.target.value })} required style={{ margin: 0 }} />
+              </FormField>
+              <FormField label="End" required>
+                <input type="datetime-local" value={newAct.end_datetime} onChange={e => setNewAct({ ...newAct, end_datetime: e.target.value })} required style={{ margin: 0 }} />
+              </FormField>
+            </div>
+            <FormField label="Assign To">
+              <div style={{ border: "1px solid var(--border-primary)", borderRadius: "var(--radius-md)", padding: "6px 8px", maxHeight: 120, overflowY: "auto", background: "var(--bg-secondary)" }}>
+                {users.map(u => (
+                  <label key={u.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 4px", cursor: "pointer", fontSize: 13 }}>
+                    <input type="checkbox" checked={newAct.assigned_to_ids.includes(u.id)} onChange={(e) => {
+                      const ids = e.target.checked ? [...newAct.assigned_to_ids, u.id] : newAct.assigned_to_ids.filter(id => id !== u.id);
+                      setNewAct({ ...newAct, assigned_to_ids: ids });
+                    }} />
+                    {u.full_name}
+                  </label>
+                ))}
+                {users.length === 0 && <span style={{ fontSize: 12, color: "var(--text-quaternary)" }}>No users</span>}
               </div>
-              <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
-                <button type="submit" style={{ flex: 1, background: "var(--brand-primary)", color: "#fff", border: "none", borderRadius: "var(--radius-md)", padding: "10px 0", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Create Activity</button>
-                <button type="button" onClick={() => setShowNewActivity(false)} style={{ background: "var(--bg-tertiary)", color: "var(--text-secondary)", border: "none", borderRadius: "var(--radius-md)", padding: "10px 20px", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>Cancel</button>
-              </div>
-            </form>
+            </FormField>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <FormField label="Location">
+                <input type="text" value={newAct.location} onChange={e => setNewAct({ ...newAct, location: e.target.value })} placeholder="Optional" style={{ margin: 0 }} />
+              </FormField>
+              <FormField label="Reminder">
+                <select value={newAct.reminder} onChange={e => setNewAct({ ...newAct, reminder: e.target.value })} style={{ margin: 0 }}>
+                  {REMINDER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </FormField>
+            </div>
+            <FormField label="Recurrence">
+              <select value={newAct.recurrence} onChange={e => setNewAct({ ...newAct, recurrence: e.target.value })} style={{ margin: 0 }}>
+                {RECURRENCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </FormField>
+            <FormField label="Description">
+              <textarea rows={2} value={newAct.description} onChange={e => setNewAct({ ...newAct, description: e.target.value })} placeholder="Optional" style={{ margin: 0 }} />
+            </FormField>
           </div>
-        </>
-      )}
+          <div style={{ display: "flex", gap: 12, paddingTop: 16, borderTop: "1px solid var(--border-primary)" }}>
+            <button type="submit" className="btn-primary" style={{ flex: 1 }}>Create Activity</button>
+            <button type="button" className="btn-ghost" onClick={() => setShowNewActivity(false)}>Cancel</button>
+          </div>
+        </form>
+      </SlideOverPanel>
 
       {/* Completion Modal */}
       {completionModal && (

@@ -6,6 +6,8 @@ import { api } from "@/lib/api";
 import { useDocumentViewer } from "@/components/DocumentViewer";
 import { useToast } from "@/components/Toast";
 import { Icon } from "@/components/ui/Icon";
+import { SlideOverPanel } from "@/components/ui/SlideOverPanel";
+import { FormField } from "@/components/ui/FormField";
 
 const JURISDICTIONS = ["", "DED Mainland", "DMCC", "ADGM", "DIFC", "RAK ICC", "JAFZA", "Other"];
 const ADDRESS_TYPES = ["registered_office", "mailing", "branch", "billing", "residential", "other"];
@@ -186,6 +188,7 @@ export default function ContactDetailPage() {
   const [newAddr, setNewAddr] = useState({ address_type: "other", address_line_1: "", address_line_2: "", city: "", state_emirate: "", postal_code: "", country: "UAE", is_primary: false, notes: "" });
   const [addingAddr, setAddingAddr] = useState(false);
   const [editingAddrId, setEditingAddrId] = useState<string | null>(null);
+  const [editAddr, setEditAddr] = useState({ address_type: "other", address_line_1: "", address_line_2: "", city: "", state_emirate: "", postal_code: "", country: "", is_primary: false, notes: "" });
   const [linkData, setLinkData] = useState<ContactLinksData | null>(null);
   const [linkFormOpen, setLinkFormOpen] = useState(false);
   const [linkFormMode, setLinkFormMode] = useState<"add" | "edit">("add");
@@ -210,8 +213,12 @@ export default function ContactDetailPage() {
   const [linkFormError, setLinkFormError] = useState("");
   const [linkFormSaving, setLinkFormSaving] = useState(false);
   const [linkFormOtherName, setLinkFormOtherName] = useState("");
-  const [activeTab, setActiveTab] = useState<"overview" | "details" | "documents" | "addresses" | "connections">("overview");
+  const [activeTab, setActiveTab] = useState<"details" | "documents" | "addresses" | "connections">("details");
+  const [editSection, setEditSection] = useState<"basic" | "company" | "tax" | "individual" | "notes" | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const [sidebarTab, setSidebarTab] = useState<"info" | "activities">("info");
+  const [contactActivities, setContactActivities] = useState<Array<{ id: string; title: string; activity_type: string; status: string; start_datetime: string }>>([]);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [linkedRecords, setLinkedRecords] = useState<{
     quotations: { id: string; number: string; status: string }[];
     sales_orders: { id: string; number: string; status: string }[];
@@ -263,6 +270,7 @@ export default function ContactDetailPage() {
     if (!id) return;
     api.get(`/api/compliance/contact-links?contact_id=${encodeURIComponent(id)}`).then((d: ContactLinksData) => setLinkData(d)).catch(() => setLinkData(null));
     api.get(`/api/contacts/${id}/linked-records`).then((d: any) => setLinkedRecords(d)).catch(() => setLinkedRecords(null));
+    api.get(`/api/activities/?contact_id=${encodeURIComponent(id)}`).then((d: any) => setContactActivities(Array.isArray(d) ? d.slice(0, 10) : [])).catch(() => setContactActivities([]));
   }, [id]);
 
   async function handleSaveContact(e: React.FormEvent) {
@@ -317,6 +325,7 @@ export default function ContactDetailPage() {
       };
       const updated = await api.patch(`/api/contacts/${id}`, body);
       setContact(updated);
+      setEditSection(null);
       toast.success("Contact saved successfully");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to save contact");
@@ -646,7 +655,6 @@ export default function ContactDetailPage() {
       ];
 
   const tabs = [
-    { key: "overview" as const, label: "Overview" },
     { key: "details" as const, label: "Details" },
     { key: "documents" as const, label: "Documents", count: contact.documents.length },
     { key: "addresses" as const, label: "Addresses", count: contact.addresses.length },
@@ -782,6 +790,21 @@ export default function ContactDetailPage() {
             ))}
           </div>
 
+          {/* Sidebar sub-tabs */}
+          <div style={{ display: "flex", gap: 0, borderRadius: "var(--radius-md)", overflow: "hidden", border: "1px solid var(--border-primary)" }}>
+            {(["info", "activities"] as const).map((t) => (
+              <button key={t} type="button" onClick={() => setSidebarTab(t)} style={{
+                flex: 1, padding: "8px 0", fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer",
+                background: sidebarTab === t ? "var(--bg-secondary)" : "var(--bg-tertiary)",
+                color: sidebarTab === t ? "var(--text-primary)" : "var(--text-tertiary)",
+                borderBottom: sidebarTab === t ? "2px solid var(--brand-primary)" : "2px solid transparent",
+              }}>
+                {t === "info" ? "Contact Info" : "Activities"}
+              </button>
+            ))}
+          </div>
+
+          {sidebarTab === "info" && (<>
           {/* Contact info */}
           <div className="card" style={{ padding: "16px 16px 12px" }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-quaternary)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Contact Info</div>
@@ -870,48 +893,84 @@ export default function ContactDetailPage() {
             })()
           )}
 
-          {/* Quick actions */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {isCompany && (
-              <a href={`/dashboard/compliance/map?root=${id}`} className="btn-secondary btn-sm" style={{ textDecoration: "none", justifyContent: "center" }}>
-                <Icon path="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z M2 12h20 M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" size={14} />
-                View on Ownership Map
-              </a>
-            )}
-            <button type="button" className="btn-ghost btn-sm" style={{ justifyContent: "center" }} onClick={() => setActiveTab("details")}>
-              <Icon path="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" size={14} />
-              Edit Details
-            </button>
-          </div>
+          {/* Quick actions dropdown */}
+          {(() => {
+            const [open, setOpen] = [moreOpen, setMoreOpen];
+            return (
+              <div style={{ position: "relative" }}>
+                <button type="button" className="btn-secondary btn-sm" style={{ width: "100%", justifyContent: "center" }} onClick={() => setOpen(!open)}>
+                  <Icon path="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm0 7a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm0 7a1 1 0 1 1 0-2 1 1 0 0 1 0 2z" size={14} />
+                  More Actions
+                  <Icon path={open ? "M18 15l-6-6-6 6" : "M6 9l6 6 6-6"} size={12} />
+                </button>
+                {open && (
+                  <>
+                    <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 10 }} />
+                    <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 4, background: "var(--bg-secondary)", border: "1px solid var(--border-primary)", borderRadius: "var(--radius-md)", boxShadow: "var(--shadow-lg)", zIndex: 20, padding: "4px 0" }}>
+                      <button type="button" onClick={() => { setActiveTab("details"); setEditSection("basic"); setOpen(false); }} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 14px", background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "var(--text-primary)", textAlign: "left" }} onMouseEnter={(e) => e.currentTarget.style.background = "var(--bg-tertiary)"} onMouseLeave={(e) => e.currentTarget.style.background = "none"}>
+                        <Icon path="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" size={14} /> Edit Details
+                      </button>
+                      {isCompany && (
+                        <a href={`/dashboard/compliance/map?root=${id}`} onClick={() => setOpen(false)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 14px", background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "var(--text-primary)", textDecoration: "none" }} onMouseEnter={(e) => e.currentTarget.style.background = "var(--bg-tertiary)"} onMouseLeave={(e) => e.currentTarget.style.background = "none"}>
+                          <Icon path="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z M2 12h20 M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" size={14} /> Ownership Map
+                        </a>
+                      )}
+                      <button type="button" onClick={() => { setSidebarTab("activities"); setOpen(false); }} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 14px", background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "var(--text-primary)", textAlign: "left" }} onMouseEnter={(e) => e.currentTarget.style.background = "var(--bg-tertiary)"} onMouseLeave={(e) => e.currentTarget.style.background = "none"}>
+                        <Icon path="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" size={14} /> View Activities
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })()}
+          </>)}
+
+          {/* Activities sub-tab */}
+          {sidebarTab === "activities" && (
+            <div className="card" style={{ padding: "16px 16px 12px" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-quaternary)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Recent Activities</div>
+              {contactActivities.length === 0 ? (
+                <div style={{ fontSize: 13, color: "var(--text-quaternary)", padding: "8px 0" }}>No activities found</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                  {contactActivities.map((act, i) => {
+                    const typeIcons: Record<string, string> = { call: "M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.11 2 2 0 0 1 4.11 2h3", meeting: "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2 M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M23 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75", email: "M4 4h16c1.1 0 2 .9 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6c0-1.1.9-2 2-2z M22 6l-10 7L2 6", task: "M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" };
+                    return (
+                      <div key={act.id} style={{ display: "flex", gap: 10, padding: "8px 0", borderBottom: i < contactActivities.length - 1 ? "1px solid var(--border-secondary)" : "none" }}>
+                        <div style={{ width: 28, height: 28, borderRadius: "var(--radius-sm)", background: act.status === "completed" ? "var(--success-light, #ecfdf5)" : "var(--bg-tertiary)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: act.status === "completed" ? "var(--success)" : "var(--text-tertiary)" }}>
+                          <Icon path={typeIcons[act.activity_type] || typeIcons.task} size={13} />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{act.title}</div>
+                          <div style={{ fontSize: 11, color: "var(--text-quaternary)" }}>
+                            {act.start_datetime ? new Date(act.start_datetime).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "—"}
+                            {" · "}
+                            <span style={{ textTransform: "capitalize" }}>{act.activity_type}</span>
+                            {act.status === "completed" && <span style={{ color: "var(--success)", marginLeft: 4 }}>✓</span>}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <a href="/dashboard/calendar" style={{ display: "block", textAlign: "center", fontSize: 12, fontWeight: 600, color: "var(--brand-primary)", marginTop: 10, textDecoration: "none" }}>View All Activities →</a>
+            </div>
+          )}
         </div>
 
         {/* ===== RIGHT MAIN AREA ===== */}
         <div style={{ flex: 1, minWidth: 0 }}>
 
-          {/* Tab bar */}
-          <div style={{ display: "flex", gap: 4, padding: 4, background: "var(--bg-tertiary)", borderRadius: "var(--radius-lg)", marginBottom: 24 }}>
+          {/* Tab bar (underline style) */}
+          <div className="tab-bar" style={{ marginBottom: 24 }}>
             {tabs.map((tab) => (
               <button
                 key={tab.key}
                 type="button"
+                className={`tab-bar-btn${activeTab === tab.key ? " active" : ""}`}
                 onClick={() => setActiveTab(tab.key)}
-                style={{
-                  flex: 1,
-                  padding: "8px 12px",
-                  borderRadius: "var(--radius-md)",
-                  fontSize: 13,
-                  fontWeight: activeTab === tab.key ? 600 : 500,
-                  color: activeTab === tab.key ? "var(--text-primary)" : "var(--text-tertiary)",
-                  background: activeTab === tab.key ? "var(--bg-secondary)" : "transparent",
-                  boxShadow: activeTab === tab.key ? "var(--shadow-sm)" : "none",
-                  border: "none",
-                  cursor: "pointer",
-                  transition: "all var(--transition-fast)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6,
-                }}
               >
                 {tab.label}
                 {tab.count !== undefined && tab.count > 0 && (
@@ -923,208 +982,160 @@ export default function ContactDetailPage() {
             ))}
           </div>
 
-          {/* ===== OVERVIEW TAB ===== */}
-          {activeTab === "overview" && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-              {/* Snapshot card */}
-              <div className="card" style={{ gridColumn: "1 / -1" }}>
-                <h4 style={{ fontSize: 14, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 16 }}>
-                  {isCompany ? "Company Snapshot" : "Individual Snapshot"}
-                </h4>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
-                  {isCompany ? (
-                    <>
-                      <div><div style={{ fontSize: 11, color: "var(--text-quaternary)", fontWeight: 600, textTransform: "uppercase", marginBottom: 4 }}>Jurisdiction</div><div style={{ fontSize: 14, fontWeight: 500 }}>{contact.jurisdiction || "—"}</div></div>
-                      <div><div style={{ fontSize: 11, color: "var(--text-quaternary)", fontWeight: 600, textTransform: "uppercase", marginBottom: 4 }}>Legal Form</div><div style={{ fontSize: 14, fontWeight: 500 }}>{contact.legal_form || "—"}</div></div>
-                      <div><div style={{ fontSize: 11, color: "var(--text-quaternary)", fontWeight: 600, textTransform: "uppercase", marginBottom: 4 }}>Tax Reg.</div><div style={{ fontSize: 14, fontWeight: 500 }}>{contact.tax_registration_no || "—"}</div></div>
-                      <div><div style={{ fontSize: 11, color: "var(--text-quaternary)", fontWeight: 600, textTransform: "uppercase", marginBottom: 4 }}>VAT</div><div style={{ fontSize: 14, fontWeight: 500 }}>{contact.vat_registered ? "Registered" : "No"}</div></div>
-                      <div><div style={{ fontSize: 11, color: "var(--text-quaternary)", fontWeight: 600, textTransform: "uppercase", marginBottom: 4 }}>Corporate Tax</div><div style={{ fontSize: 14, fontWeight: 500 }}>{contact.ct_registered ? "Registered" : "No"}</div></div>
-                      <div><div style={{ fontSize: 11, color: "var(--text-quaternary)", fontWeight: 600, textTransform: "uppercase", marginBottom: 4 }}>Country</div><div style={{ fontSize: 14, fontWeight: 500 }}>{contact.country || "—"}</div></div>
-                    </>
-                  ) : (
-                    <>
-                      <div><div style={{ fontSize: 11, color: "var(--text-quaternary)", fontWeight: 600, textTransform: "uppercase", marginBottom: 4 }}>Nationality</div><div style={{ fontSize: 14, fontWeight: 500 }}>{contact.nationality || "—"}</div></div>
-                      <div><div style={{ fontSize: 11, color: "var(--text-quaternary)", fontWeight: 600, textTransform: "uppercase", marginBottom: 4 }}>Passport</div><div style={{ fontSize: 14, fontWeight: 500, fontFamily: "monospace" }}>{contact.passport_no || "—"}</div></div>
-                      <div><div style={{ fontSize: 11, color: "var(--text-quaternary)", fontWeight: 600, textTransform: "uppercase", marginBottom: 4 }}>Date of Birth</div><div style={{ fontSize: 14, fontWeight: 500 }}>{contact.date_of_birth ? contact.date_of_birth.slice(0, 10) : "—"}</div></div>
-                      <div><div style={{ fontSize: 11, color: "var(--text-quaternary)", fontWeight: 600, textTransform: "uppercase", marginBottom: 4 }}>Visa Type</div><div style={{ fontSize: 14, fontWeight: 500 }}>{contact.visa_type || "—"}</div></div>
-                      <div><div style={{ fontSize: 11, color: "var(--text-quaternary)", fontWeight: 600, textTransform: "uppercase", marginBottom: 4 }}>Emirates ID</div><div style={{ fontSize: 14, fontWeight: 500, fontFamily: "monospace" }}>{contact.emirates_id || "—"}</div></div>
-                      <div><div style={{ fontSize: 11, color: "var(--text-quaternary)", fontWeight: 600, textTransform: "uppercase", marginBottom: 4 }}>Gender</div><div style={{ fontSize: 14, fontWeight: 500, textTransform: "capitalize" }}>{contact.gender || "—"}</div></div>
-                    </>
-                  )}
-                </div>
+          {/* ===== DETAILS TAB (Read-only) ===== */}
+          {activeTab === "details" && (() => {
+            const Field = ({ label, value }: { label: string; value: string | number | null | undefined }) => (
+              <div style={{ padding: "10px 0", borderBottom: "1px solid var(--border-secondary)" }}>
+                <div className="meta-label" style={{ marginBottom: 4 }}>{label}</div>
+                <div style={{ fontSize: 14, fontWeight: 500, color: value ? "var(--text-primary)" : "var(--text-quaternary)" }}>{value || "—"}</div>
               </div>
-
-              {/* Recent documents */}
-              <div className="card">
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <h4 style={{ fontSize: 14, fontWeight: 600, color: "var(--text-secondary)" }}>Recent Documents</h4>
-                  {contact.documents.length > 0 && (
-                    <button type="button" className="btn-ghost btn-sm" onClick={() => setActiveTab("documents")} style={{ fontSize: 12, padding: "4px 8px" }}>See all →</button>
-                  )}
-                </div>
-                {contact.documents.length === 0 ? (
-                  <p style={{ fontSize: 13, color: "var(--text-quaternary)" }}>No documents yet</p>
-                ) : (
-                  contact.documents.slice(0, 3).map((d) => (
-                    <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--border-secondary)" }}>
-                      <Icon path="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M16 13H8 M16 17H8 M10 9H8" size={16} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.file_name}</div>
-                        <span className="badge badge-neutral" style={{ fontSize: 10, textTransform: "capitalize" }}>{d.category.replace("_", " ")}</span>
-                      </div>
-                      <button type="button" className="btn-ghost btn-sm" onClick={() => viewDoc(d.id, d.file_name)} style={{ padding: 4 }}>
-                        <Icon path="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z" size={14} />
-                      </button>
+            );
+            const SectionEditBtn = ({ section }: { section: "basic" | "company" | "tax" | "individual" | "notes" }) => (
+              <button type="button" className="btn-ghost btn-sm" onClick={() => setEditSection(section)} style={{ fontSize: 12, padding: "4px 10px" }}>
+                <Icon path="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" size={12} /> Edit
+              </button>
+            );
+            return (
+              <div>
+                {/* Basic Information */}
+                <div className="card" style={{ marginBottom: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    {renderSectionHeader("basic", "Basic Information")}
+                    <SectionEditBtn section="basic" />
+                  </div>
+                  {!collapsedSections.basic && (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
+                      <Field label="Name" value={contact.name} />
+                      <Field label="Email" value={contact.email} />
+                      <Field label="Phone (primary)" value={contact.phone_primary} />
+                      <Field label="Phone (mobile)" value={contact.phone_mobile} />
+                      <Field label="Phone (office)" value={contact.phone_office} />
+                      <Field label="Status" value={contact.status} />
+                      <Field label="Country" value={contact.country} />
                     </div>
-                  ))
-                )}
-              </div>
-
-              {/* Connections summary */}
-              <div className="card">
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <h4 style={{ fontSize: 14, fontWeight: 600, color: "var(--text-secondary)" }}>Connections</h4>
-                  {totalConnections > 0 && (
-                    <button type="button" className="btn-ghost btn-sm" onClick={() => setActiveTab("connections")} style={{ fontSize: 12, padding: "4px 8px" }}>See all →</button>
                   )}
                 </div>
-                {totalConnections === 0 ? (
-                  <p style={{ fontSize: 13, color: "var(--text-quaternary)" }}>No connections yet</p>
-                ) : (
-                  [...(linkData?.outgoing ?? []), ...(linkData?.incoming ?? [])].slice(0, 4).map((item) => (
-                    <div key={item.link_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--border-secondary)" }}>
-                      <div style={{ width: 28, height: 28, borderRadius: "var(--radius-sm)", background: item.other_contact_type === "company" ? "var(--accent-blue-light)" : "var(--accent-purple-light)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                        {item.other_contact_type === "company"
-                          ? <Icon path="M3 21h18 M9 8h1 M9 12h1 M9 16h1 M14 8h1 M14 12h1 M14 16h1 M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16" size={12} />
-                          : <Icon path="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" size={12} />}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.other_contact_name}</div>
-                      </div>
-                      <span className="badge badge-neutral" style={{ fontSize: 10, textTransform: "capitalize" }}>{linkItemLabel(item)}</span>
+
+                {/* Company Details */}
+                {isCompany && (
+                  <div className="card" style={{ marginBottom: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      {renderSectionHeader("company", "Company Details")}
+                      <SectionEditBtn section="company" />
                     </div>
-                  ))
-                )}
-              </div>
-
-              {/* Notes */}
-              {contact.notes && (
-                <div className="card" style={{ gridColumn: "1 / -1" }}>
-                  <h4 style={{ fontSize: 14, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 8 }}>Notes</h4>
-                  <p style={{ fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{contact.notes}</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ===== DETAILS TAB ===== */}
-          {activeTab === "details" && (
-            <form onSubmit={handleSaveContact}>
-              {/* Pinned save bar */}
-              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16, position: "sticky", top: 0, zIndex: 10, background: "var(--bg-primary)", padding: "8px 0" }}>
-                <button type="submit" className="btn-primary" disabled={saving}>
-                  {saving ? (<><div className="loading-spinner" style={{ width: 14, height: 14 }}></div> Saving...</>) : (<><Icon path="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z M17 21v-8H7v8 M7 3v5h8" size={16} /> Save Changes</>)}
-                </button>
-              </div>
-
-              {/* Basic Information */}
-              <div className="card" style={{ marginBottom: 16 }}>
-                {renderSectionHeader("basic", "Basic Information")}
-                {!collapsedSections.basic && (
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                    <div><label>Name</label><input value={contact.name} onChange={(e) => setContact((c) => c ? { ...c, name: e.target.value } : null)} required /></div>
-                    <div><label>Email</label><input type="email" value={contact.email || ""} onChange={(e) => setContact((c) => c ? { ...c, email: e.target.value || null } : null)} /></div>
-                    <div><label>Phone (primary)</label><input value={contact.phone_primary || ""} onChange={(e) => setContact((c) => c ? { ...c, phone_primary: e.target.value || null } : null)} /></div>
-                    <div><label>Phone (mobile)</label><input value={contact.phone_mobile || ""} onChange={(e) => setContact((c) => c ? { ...c, phone_mobile: e.target.value || null } : null)} /></div>
-                    <div><label>Phone (office)</label><input value={contact.phone_office || ""} onChange={(e) => setContact((c) => c ? { ...c, phone_office: e.target.value || null } : null)} /></div>
-                    <div><label>Status</label><select value={contact.status} onChange={(e) => setContact((c) => c ? { ...c, status: e.target.value } : null)}><option value="active">Active</option><option value="inactive">Inactive</option></select></div>
-                    <div style={{ gridColumn: "1 / -1" }}><label>Notes</label><textarea value={contact.notes || ""} onChange={(e) => setContact((c) => c ? { ...c, notes: e.target.value || null } : null)} rows={3} /></div>
+                    {!collapsedSections.company && (
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
+                        <Field label="Trade License No." value={contact.trade_license_no} />
+                        <Field label="Jurisdiction" value={contact.jurisdiction} />
+                        <Field label="Legal Form" value={contact.legal_form} />
+                        <Field label="Tax Registration" value={contact.tax_registration_no} />
+                        <Field label="License Issue" value={toDateStr(contact.license_issue_date)} />
+                        <Field label="License Expiry" value={toDateStr(contact.license_expiry_date)} />
+                        <Field label="Establishment Card Expiry" value={toDateStr(contact.establishment_card_expiry)} />
+                        <Field label="Visa Expiry" value={toDateStr(contact.visa_expiry_date)} />
+                        <Field label="Website" value={contact.website} />
+                        <div style={{ gridColumn: "1 / -1", padding: "10px 0" }}>
+                          <div className="meta-label" style={{ marginBottom: 4 }}>Licensed Activities</div>
+                          <div style={{ fontSize: 14, color: contact.activity_license_activities ? "var(--text-primary)" : "var(--text-quaternary)", whiteSpace: "pre-wrap" }}>{contact.activity_license_activities || "—"}</div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
+
+                {/* Tax Information */}
+                {isCompany && (
+                  <div className="card" style={{ marginBottom: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      {renderSectionHeader("tax", "Tax Information")}
+                      <SectionEditBtn section="tax" />
+                    </div>
+                    {!collapsedSections.tax && (
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
+                        <Field label="VAT Registered" value={contact.vat_registered ? "Yes" : "No"} />
+                        <Field label="VAT Period Type" value={contact.vat_period_type} />
+                        <Field label="VAT Period End Day" value={contact.vat_period_end_day} />
+                        <Field label="First Period End Date" value={contact.vat_first_period_end_date?.slice(0, 10)} />
+                        <Field label="Return Due (days)" value={contact.vat_return_due_days} />
+                        <div style={{ gridColumn: "1 / -1", padding: "10px 0", borderBottom: "1px solid var(--border-secondary)" }}>
+                          <div className="meta-label" style={{ marginBottom: 4 }}>VAT Notes</div>
+                          <div style={{ fontSize: 14, color: contact.vat_notes ? "var(--text-primary)" : "var(--text-quaternary)" }}>{contact.vat_notes || "—"}</div>
+                        </div>
+                        <Field label="CT Registered" value={contact.ct_registered ? "Yes" : "No"} />
+                        <Field label="CT Registration No." value={contact.ct_registration_no} />
+                        <Field label="CT Period Type" value={contact.ct_period_type} />
+                        <Field label="Financial Year Start Month" value={contact.ct_financial_year_start_month} />
+                        <Field label="Financial Year Start Day" value={contact.ct_financial_year_start_day} />
+                        <Field label="Filing Due (months)" value={contact.ct_filing_due_months} />
+                        <div style={{ gridColumn: "1 / -1", padding: "10px 0" }}>
+                          <div className="meta-label" style={{ marginBottom: 4 }}>CT Notes</div>
+                          <div style={{ fontSize: 14, color: contact.ct_notes ? "var(--text-primary)" : "var(--text-quaternary)" }}>{contact.ct_notes || "—"}</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Individual Details */}
+                {!isCompany && (
+                  <div className="card" style={{ marginBottom: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      {renderSectionHeader("individual", "Individual Details")}
+                      <SectionEditBtn section="individual" />
+                    </div>
+                    {!collapsedSections.individual && (
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
+                        <Field label="First Name" value={contact.first_name} />
+                        <Field label="Last Name" value={contact.last_name} />
+                        <Field label="Passport No." value={contact.passport_no} />
+                        <Field label="Passport Expiry" value={toDateStr(contact.passport_expiry)} />
+                        <Field label="Nationality" value={contact.nationality} />
+                        <Field label="Date of Birth" value={toDateStr(contact.date_of_birth)} />
+                        <Field label="Visa Type" value={contact.visa_type} />
+                        <Field label="Visa Expiry" value={toDateStr(contact.visa_expiry_date)} />
+                        <Field label="Emirates ID" value={contact.emirates_id} />
+                        <Field label="Emirates ID Expiry" value={toDateStr(contact.emirates_id_expiry)} />
+                        <Field label="Gender" value={contact.gender} />
+                        <Field label="Designation" value={contact.designation_title} />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Notes */}
+                <div className="card" style={{ marginBottom: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", margin: 0 }}>Notes</h3>
+                    <SectionEditBtn section="notes" />
+                  </div>
+                  <div style={{ fontSize: 14, color: contact.notes ? "var(--text-secondary)" : "var(--text-quaternary)", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{contact.notes || "No notes yet."}</div>
+                </div>
               </div>
-
-              {/* Company Details */}
-              {isCompany && (
-                <div className="card" style={{ marginBottom: 16 }}>
-                  {renderSectionHeader("company", "Company Details")}
-                  {!collapsedSections.company && (
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                      <div><label>Trade license no.</label><input value={contact.trade_license_no || ""} onChange={(e) => setContact((c) => c ? { ...c, trade_license_no: e.target.value || null } : null)} /></div>
-                      <div><label>Jurisdiction</label><select value={contact.jurisdiction || ""} onChange={(e) => setContact((c) => c ? { ...c, jurisdiction: e.target.value || null } : null)}>{JURISDICTIONS.map((j) => <option key={j || "x"} value={j}>{j || "Select"}</option>)}</select></div>
-                      <div><label>Legal form</label><input value={contact.legal_form || ""} onChange={(e) => setContact((c) => c ? { ...c, legal_form: e.target.value || null } : null)} /></div>
-                      <div><label>Tax registration</label><input value={contact.tax_registration_no || ""} onChange={(e) => setContact((c) => c ? { ...c, tax_registration_no: e.target.value || null } : null)} /></div>
-                      <div><label>License issue</label><input type="date" value={toDateStr(contact.license_issue_date)} onChange={(e) => setContact((c) => c ? { ...c, license_issue_date: e.target.value || null } : null)} /></div>
-                      <div><label>License expiry</label><input type="date" value={toDateStr(contact.license_expiry_date)} onChange={(e) => setContact((c) => c ? { ...c, license_expiry_date: e.target.value || null } : null)} /></div>
-                      <div><label>Establishment card expiry</label><input type="date" value={toDateStr(contact.establishment_card_expiry)} onChange={(e) => setContact((c) => c ? { ...c, establishment_card_expiry: e.target.value || null } : null)} /></div>
-                      <div><label>Visa expiry</label><input type="date" value={toDateStr(contact.visa_expiry_date)} onChange={(e) => setContact((c) => c ? { ...c, visa_expiry_date: e.target.value || null } : null)} /></div>
-                      <div style={{ gridColumn: "1 / -1" }}><label>Website</label><input value={contact.website || ""} onChange={(e) => setContact((c) => c ? { ...c, website: e.target.value || null } : null)} /></div>
-                      <div style={{ gridColumn: "1 / -1" }}><label>Licensed activities</label><textarea value={contact.activity_license_activities || ""} onChange={(e) => setContact((c) => c ? { ...c, activity_license_activities: e.target.value || null } : null)} rows={3} /></div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Tax Information */}
-              {isCompany && (
-                <div className="card" style={{ marginBottom: 16 }}>
-                  {renderSectionHeader("tax", "Tax Information")}
-                  {!collapsedSections.tax && (
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                      <div style={{ gridColumn: "1 / -1" }}>
-                        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "12px 16px", background: "var(--bg-tertiary)", borderRadius: "var(--radius-md)" }}>
-                          <input type="checkbox" checked={contact.vat_registered ?? false} onChange={(e) => setContact((c) => c ? { ...c, vat_registered: e.target.checked } : null)} style={{ width: 18, height: 18 }} />
-                          <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>VAT registered</span>
-                        </label>
-                      </div>
-                      <div><label>VAT period type</label><select value={contact.vat_period_type || ""} onChange={(e) => setContact((c) => c ? { ...c, vat_period_type: e.target.value || null } : null)}><option value="">—</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option></select></div>
-                      <div><label>VAT period end day (1–31)</label><input type="number" min={1} max={31} value={contact.vat_period_end_day ?? ""} onChange={(e) => setContact((c) => c ? { ...c, vat_period_end_day: e.target.value ? parseInt(e.target.value, 10) : null } : null)} placeholder="e.g. 31" /></div>
-                      <div><label>First period end date</label><input type="date" value={contact.vat_first_period_end_date ? contact.vat_first_period_end_date.slice(0, 10) : ""} onChange={(e) => setContact((c) => c ? { ...c, vat_first_period_end_date: e.target.value || null } : null)} /></div>
-                      <div><label>Return due (days after period end)</label><input type="number" min={1} value={contact.vat_return_due_days ?? ""} onChange={(e) => setContact((c) => c ? { ...c, vat_return_due_days: e.target.value ? parseInt(e.target.value, 10) : null } : null)} placeholder="e.g. 28" /></div>
-                      <div style={{ gridColumn: "1 / -1" }}><label>VAT notes</label><textarea value={contact.vat_notes || ""} onChange={(e) => setContact((c) => c ? { ...c, vat_notes: e.target.value || null } : null)} rows={2} /></div>
-                      <div style={{ gridColumn: "1 / -1" }}>
-                        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "12px 16px", background: "var(--bg-tertiary)", borderRadius: "var(--radius-md)" }}>
-                          <input type="checkbox" checked={contact.ct_registered ?? false} onChange={(e) => setContact((c) => c ? { ...c, ct_registered: e.target.checked } : null)} style={{ width: 18, height: 18 }} />
-                          <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>CT registered (Corporate Tax)</span>
-                        </label>
-                      </div>
-                      <div><label>CT registration no.</label><input value={contact.ct_registration_no || ""} onChange={(e) => setContact((c) => c ? { ...c, ct_registration_no: e.target.value || null } : null)} /></div>
-                      <div><label>CT period type</label><select value={contact.ct_period_type || ""} onChange={(e) => setContact((c) => c ? { ...c, ct_period_type: e.target.value || null } : null)}><option value="">—</option><option value="calendar_year">Calendar year</option><option value="fiscal_year">Fiscal year</option></select></div>
-                      <div><label>Financial year start month (1–12)</label><input type="number" min={1} max={12} value={contact.ct_financial_year_start_month ?? ""} onChange={(e) => setContact((c) => c ? { ...c, ct_financial_year_start_month: e.target.value ? parseInt(e.target.value, 10) : null } : null)} placeholder="e.g. 4" /></div>
-                      <div><label>Financial year start day (1–31)</label><input type="number" min={1} max={31} value={contact.ct_financial_year_start_day ?? ""} onChange={(e) => setContact((c) => c ? { ...c, ct_financial_year_start_day: e.target.value ? parseInt(e.target.value, 10) : null } : null)} placeholder="e.g. 1" /></div>
-                      <div><label>Filing due (months after period end)</label><input type="number" min={1} value={contact.ct_filing_due_months ?? ""} onChange={(e) => setContact((c) => c ? { ...c, ct_filing_due_months: e.target.value ? parseInt(e.target.value, 10) : null } : null)} placeholder="e.g. 9" /></div>
-                      <div style={{ gridColumn: "1 / -1" }}><label>CT notes</label><textarea value={contact.ct_notes || ""} onChange={(e) => setContact((c) => c ? { ...c, ct_notes: e.target.value || null } : null)} rows={2} /></div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Individual Details */}
-              {!isCompany && (
-                <div className="card" style={{ marginBottom: 16 }}>
-                  {renderSectionHeader("individual", "Individual Details")}
-                  {!collapsedSections.individual && (
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                      <div><label>First name</label><input value={contact.first_name || ""} onChange={(e) => setContact((c) => c ? { ...c, first_name: e.target.value || null } : null)} /></div>
-                      <div><label>Last name</label><input value={contact.last_name || ""} onChange={(e) => setContact((c) => c ? { ...c, last_name: e.target.value || null } : null)} /></div>
-                      <div><label>Passport no.</label><input value={contact.passport_no || ""} onChange={(e) => setContact((c) => c ? { ...c, passport_no: e.target.value || null } : null)} /></div>
-                      <div><label>Passport expiry</label><input type="date" value={toDateStr(contact.passport_expiry)} onChange={(e) => setContact((c) => c ? { ...c, passport_expiry: e.target.value || null } : null)} /></div>
-                      <div><label>Nationality</label><input value={contact.nationality || ""} onChange={(e) => setContact((c) => c ? { ...c, nationality: e.target.value || null } : null)} /></div>
-                      <div><label>Date of birth</label><input type="date" value={toDateStr(contact.date_of_birth)} onChange={(e) => setContact((c) => c ? { ...c, date_of_birth: e.target.value || null } : null)} /></div>
-                      <div><label>Visa type</label><input value={contact.visa_type || ""} onChange={(e) => setContact((c) => c ? { ...c, visa_type: e.target.value || null } : null)} /></div>
-                      <div><label>Visa expiry</label><input type="date" value={toDateStr(contact.visa_expiry_date)} onChange={(e) => setContact((c) => c ? { ...c, visa_expiry_date: e.target.value || null } : null)} /></div>
-                      <div><label>Emirates ID</label><input value={contact.emirates_id || ""} onChange={(e) => setContact((c) => c ? { ...c, emirates_id: e.target.value || null } : null)} /></div>
-                      <div><label>Emirates ID expiry</label><input type="date" value={toDateStr(contact.emirates_id_expiry)} onChange={(e) => setContact((c) => c ? { ...c, emirates_id_expiry: e.target.value || null } : null)} /></div>
-                      <div><label>Gender</label><select value={contact.gender || ""} onChange={(e) => setContact((c) => c ? { ...c, gender: e.target.value || null } : null)}><option value="">—</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></div>
-                      <div><label>Designation</label><input value={contact.designation_title || ""} onChange={(e) => setContact((c) => c ? { ...c, designation_title: e.target.value || null } : null)} /></div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </form>
-          )}
+            );
+          })()}
 
           {/* ===== DOCUMENTS TAB ===== */}
           {activeTab === "documents" && (
+            <div>
+              {/* Stat summary cards */}
+              {(() => {
+                const cats: Record<string, number> = {};
+                contact.documents.forEach((d) => { const c = d.category || "other"; cats[c] = (cats[c] || 0) + 1; });
+                return (
+                  <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(Object.keys(cats).length + 1, 5)}, 1fr)`, gap: 10, marginBottom: 16 }}>
+                    <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-primary)", borderRadius: "var(--radius-lg)", padding: "14px 12px", textAlign: "center" }}>
+                      <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)", lineHeight: 1 }}>{contact.documents.length}</div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.04em", marginTop: 4 }}>Total</div>
+                    </div>
+                    {Object.entries(cats).map(([cat, count]) => (
+                      <div key={cat} style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-primary)", borderRadius: "var(--radius-lg)", padding: "14px 12px", textAlign: "center" }}>
+                        <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)", lineHeight: 1 }}>{count}</div>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-tertiary)", textTransform: "capitalize", letterSpacing: "0.04em", marginTop: 4 }}>{cat.replace("_", " ")}</div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
             <div className="card">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
                 <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)" }}>Documents</h3>
@@ -1190,6 +1201,7 @@ export default function ContactDetailPage() {
                 </div>
               )}
             </div>
+            </div>
           )}
 
           {/* ===== ADDRESSES TAB ===== */}
@@ -1197,13 +1209,11 @@ export default function ContactDetailPage() {
             <div className="card">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
                 <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)" }}>Addresses</h3>
-                {!newAddrOpen && (
-                  <button type="button" className="btn-secondary btn-sm" onClick={() => setNewAddrOpen(true)}>
-                    <Icon path="M12 5v14 M5 12h14" size={16} /> Add Address
-                  </button>
-                )}
+                <button type="button" className="btn-secondary btn-sm" onClick={() => setNewAddrOpen(true)}>
+                  <Icon path="M12 5v14 M5 12h14" size={16} /> Add Address
+                </button>
               </div>
-              {contact.addresses.length === 0 && !newAddrOpen && (
+              {contact.addresses.length === 0 && (
                 <div className="empty-state" style={{ padding: 40 }}>
                   <div className="empty-state-icon"><Icon path="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z M12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" size={40} /></div>
                   <div className="empty-state-description">No addresses yet</div>
@@ -1211,156 +1221,70 @@ export default function ContactDetailPage() {
               )}
               {contact.addresses.map((addr, index) => (
                 <div key={addr.id} style={{ padding: "16px 0", borderBottom: index < contact.addresses.length - 1 ? "1px solid var(--border-secondary)" : "none" }}>
-                  {editingAddrId === addr.id ? (
-                    <AddressEditForm addr={addr} onSave={(patch) => updateAddress(addr.id, patch)} onCancel={() => setEditingAddrId(null)} />
-                  ) : (
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
-                      <div style={{ fontSize: 14, flex: 1, minWidth: 200 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-                          <Icon path="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z M12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" size={16} />
-                          <span style={{ fontWeight: 600, textTransform: "capitalize", color: "var(--text-primary)" }}>{addr.address_type.replace("_", " ")}</span>
-                          {addr.is_primary && <span className="badge badge-success badge-dot" style={{ fontSize: 11 }}>Primary</span>}
-                        </div>
-                        <p style={{ color: "var(--text-secondary)", lineHeight: 1.6 }}>
-                          {addr.address_line_1}{addr.address_line_2 && `, ${addr.address_line_2}`}
-                          {(addr.city || addr.state_emirate) && (<><br/>{[addr.city, addr.state_emirate].filter(Boolean).join(", ")}</>)}
-                          {addr.postal_code && ` ${addr.postal_code}`}{addr.country && `, ${addr.country}`}
-                        </p>
-                        {addr.notes && <p style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 8, fontStyle: "italic" }}>{addr.notes}</p>}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+                    <div style={{ fontSize: 14, flex: 1, minWidth: 200 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                        <Icon path="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z M12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" size={16} />
+                        <span style={{ fontWeight: 600, textTransform: "capitalize", color: "var(--text-primary)" }}>{addr.address_type.replace("_", " ")}</span>
+                        {addr.is_primary && <span className="badge badge-success badge-dot" style={{ fontSize: 11 }}>Primary</span>}
                       </div>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <button type="button" className="btn-ghost btn-sm" onClick={() => setEditingAddrId(addr.id)}>
-                          <Icon path="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" size={14} /> Edit
-                        </button>
-                        <button type="button" className="btn-ghost btn-sm" style={{ color: "var(--danger)" }} onClick={() => deleteAddress(addr.id)}>
-                          <Icon path="M3 6h18 M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" size={14} /> Delete
-                        </button>
-                      </div>
+                      <p style={{ color: "var(--text-secondary)", lineHeight: 1.6 }}>
+                        {addr.address_line_1}{addr.address_line_2 && `, ${addr.address_line_2}`}
+                        {(addr.city || addr.state_emirate) && (<><br/>{[addr.city, addr.state_emirate].filter(Boolean).join(", ")}</>)}
+                        {addr.postal_code && ` ${addr.postal_code}`}{addr.country && `, ${addr.country}`}
+                      </p>
+                      {addr.notes && <p style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 8, fontStyle: "italic" }}>{addr.notes}</p>}
                     </div>
-                  )}
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button type="button" className="btn-ghost btn-sm" onClick={() => {
+                        setEditAddr({ address_type: addr.address_type, address_line_1: addr.address_line_1, address_line_2: addr.address_line_2 || "", city: addr.city || "", state_emirate: addr.state_emirate || "", postal_code: addr.postal_code || "", country: addr.country || "", is_primary: addr.is_primary ?? false, notes: addr.notes || "" });
+                        setEditingAddrId(addr.id);
+                      }}>
+                        <Icon path="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" size={14} /> Edit
+                      </button>
+                      <button type="button" className="btn-ghost btn-sm" style={{ color: "var(--danger)" }} onClick={() => deleteAddress(addr.id)}>
+                        <Icon path="M3 6h18 M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" size={14} /> Delete
+                      </button>
+                    </div>
+                  </div>
                 </div>
               ))}
-              {newAddrOpen && (
-                <form onSubmit={addAddress} style={{ marginTop: 16, padding: 20, background: "var(--bg-tertiary)", borderRadius: "var(--radius-lg)", border: "1px solid var(--border-primary)" }}>
-                  <h4 style={{ fontSize: 15, fontWeight: 600, marginBottom: 16, color: "var(--text-primary)" }}>New Address</h4>
-                  <div style={{ marginBottom: 12 }}>
-                    <label>Address Type</label>
-                    <select value={newAddr.address_type} onChange={(e) => setNewAddr((a) => ({ ...a, address_type: e.target.value }))} style={{ width: 200 }}>
-                      {ADDRESS_TYPES.map((t) => <option key={t} value={t}>{t.replace("_", " ")}</option>)}
-                    </select>
-                  </div>
-                  <input placeholder="Address line 1 *" value={newAddr.address_line_1} onChange={(e) => setNewAddr((a) => ({ ...a, address_line_1: e.target.value }))} style={{ marginBottom: 12, width: "100%" }} required />
-                  <input placeholder="Address line 2" value={newAddr.address_line_2} onChange={(e) => setNewAddr((a) => ({ ...a, address_line_2: e.target.value }))} style={{ marginBottom: 12, width: "100%" }} />
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
-                    <input placeholder="City" value={newAddr.city} onChange={(e) => setNewAddr((a) => ({ ...a, city: e.target.value }))} />
-                    <input placeholder="Emirate" value={newAddr.state_emirate} onChange={(e) => setNewAddr((a) => ({ ...a, state_emirate: e.target.value }))} />
-                    <input placeholder="Postal code" value={newAddr.postal_code} onChange={(e) => setNewAddr((a) => ({ ...a, postal_code: e.target.value }))} />
-                  </div>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", marginBottom: 12, padding: "10px 12px", background: "var(--bg-secondary)", borderRadius: "var(--radius-md)" }}>
-                    <input type="checkbox" checked={newAddr.is_primary} onChange={(e) => setNewAddr((a) => ({ ...a, is_primary: e.target.checked }))} style={{ width: 16, height: 16 }} />
-                    <span style={{ fontWeight: 500, color: "var(--text-secondary)" }}>Set as primary address</span>
-                  </label>
-                  <textarea placeholder="Address notes (optional)" value={newAddr.notes} onChange={(e) => setNewAddr((a) => ({ ...a, notes: e.target.value }))} rows={2} style={{ width: "100%", marginBottom: 16 }} />
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button type="submit" className="btn-primary btn-sm" disabled={addingAddr}>
-                      {addingAddr ? (<><div className="loading-spinner" style={{ width: 12, height: 12 }}></div> Adding...</>) : (<><Icon path="M22 11.08V12a10 10 0 1 1-5.93-9.14 M22 4L12 14.01l-3-3" size={14} /> Add Address</>)}
-                    </button>
-                    <button type="button" className="btn-ghost btn-sm" onClick={() => setNewAddrOpen(false)}>Cancel</button>
-                  </div>
-                </form>
-              )}
             </div>
           )}
 
           {/* ===== CONNECTIONS TAB ===== */}
           {activeTab === "connections" && (
+            <div>
+              {/* Stat summary cards */}
+              {linkData && (() => {
+                const allLinks = [...linkData.outgoing, ...linkData.incoming];
+                const companyCount = new Set(allLinks.filter(l => l.other_contact_type === "company").map(l => l.other_contact_id)).size;
+                const individualCount = new Set(allLinks.filter(l => l.other_contact_type === "individual").map(l => l.other_contact_id)).size;
+                const ownershipCount = allLinks.filter(l => l.link_type === "ownership").length;
+                return (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+                    <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-primary)", borderRadius: "var(--radius-lg)", padding: "14px 12px", textAlign: "center" }}>
+                      <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)", lineHeight: 1 }}>{companyCount}</div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.04em", marginTop: 4 }}>Companies</div>
+                    </div>
+                    <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-primary)", borderRadius: "var(--radius-lg)", padding: "14px 12px", textAlign: "center" }}>
+                      <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)", lineHeight: 1 }}>{individualCount}</div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.04em", marginTop: 4 }}>Individuals</div>
+                    </div>
+                    <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-primary)", borderRadius: "var(--radius-lg)", padding: "14px 12px", textAlign: "center" }}>
+                      <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)", lineHeight: 1 }}>{ownershipCount}</div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.04em", marginTop: 4 }}>Ownership</div>
+                    </div>
+                  </div>
+                );
+              })()}
             <div className="card">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
                 <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)" }}>Connections</h3>
-                {!linkFormOpen && (
-                  <button type="button" className="btn-secondary btn-sm" onClick={openAddLinkForm}>
-                    <Icon path="M12 5v14 M5 12h14" size={16} /> Add connection
-                  </button>
-                )}
+                <button type="button" className="btn-secondary btn-sm" onClick={openAddLinkForm}>
+                  <Icon path="M12 5v14 M5 12h14" size={16} /> Add connection
+                </button>
               </div>
-              {linkFormOpen && (
-                <form onSubmit={submitLinkForm} style={{ marginBottom: 24, padding: 20, background: "var(--bg-tertiary)", borderRadius: "var(--radius-lg)", border: "1px solid var(--border-primary)" }}>
-                  <h4 style={{ fontSize: 15, fontWeight: 600, marginBottom: 16, color: "var(--text-primary)" }}>{linkFormMode === "add" ? "New connection" : "Edit connection"}</h4>
-                  {linkFormError && <div className="alert alert-danger" style={{ marginBottom: 16 }}>{linkFormError}</div>}
-                  {linkFormMode === "add" && (
-                    <>
-                      <div style={{ marginBottom: 12 }}>
-                        <label>Direction</label>
-                        <select value={linkForm.thisContactIsOwner ? "owner" : "owned"} onChange={(e) => setLinkForm((f) => ({ ...f, thisContactIsOwner: e.target.value === "owner" }))} style={{ width: 280 }}>
-                          <option value="owner">This contact is the owner (subject)</option>
-                          <option value="owned">This contact is the owned (object)</option>
-                        </select>
-                      </div>
-                      <div style={{ marginBottom: 12 }}>
-                        <label>Other contact</label>
-                        <select value={linkForm.other_contact_id} onChange={(e) => setLinkForm((f) => ({ ...f, other_contact_id: e.target.value }))} required style={{ width: "100%", maxWidth: 400 }}>
-                          <option value="">Select contact</option>
-                          {linkFormFilteredContacts().map((c) => (<option key={c.id} value={c.id}>{c.name} ({c.contact_type})</option>))}
-                        </select>
-                      </div>
-                    </>
-                  )}
-                  {linkFormMode === "edit" && linkForm.other_contact_id && (
-                    <p style={{ fontSize: 14, color: "var(--text-secondary)", marginBottom: 12 }}>Link to: {linkFormOtherName || linkForm.other_contact_id}</p>
-                  )}
-                  <div style={{ marginBottom: 12 }}>
-                    <label>Link type</label>
-                    <select value={linkForm.link_type} onChange={(e) => setLinkForm((f) => ({ ...f, link_type: e.target.value }))} style={{ width: 200 }}>
-                      {LINK_TYPES.map((t) => (<option key={t} value={t}>{t}</option>))}
-                    </select>
-                  </div>
-                  {(linkForm.link_type === "ownership" || linkForm.link_type === "control") && (
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-                      <div><label>Percentage (%)</label><input type="number" min={0} max={100} step={0.01} value={linkForm.percentage ?? ""} onChange={(e) => setLinkForm((f) => ({ ...f, percentage: e.target.value === "" ? null : parseFloat(e.target.value) }))} placeholder="e.g. 50" /></div>
-                      <div><label>Voting %</label><input type="number" min={0} max={100} step={0.01} value={linkForm.voting_pct ?? ""} onChange={(e) => setLinkForm((f) => ({ ...f, voting_pct: e.target.value === "" ? null : parseFloat(e.target.value) }))} placeholder="Optional" /></div>
-                    </div>
-                  )}
-                  {(linkForm.link_type === "ownership" || linkForm.link_type === "control") && (
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-                      <div><label>Number of shares</label><input type="number" min={0} value={linkForm.number_of_shares ?? ""} onChange={(e) => setLinkForm((f) => ({ ...f, number_of_shares: e.target.value === "" ? null : parseFloat(e.target.value) }))} placeholder="Optional" /></div>
-                      <div><label>Share class</label><input value={linkForm.share_class} onChange={(e) => setLinkForm((f) => ({ ...f, share_class: e.target.value }))} placeholder="e.g. ordinary" /></div>
-                      <div><label>Nominal value per share</label><input type="number" min={0} step={0.01} value={linkForm.nominal_value_per_share ?? ""} onChange={(e) => setLinkForm((f) => ({ ...f, nominal_value_per_share: e.target.value === "" ? null : parseFloat(e.target.value) }))} placeholder="Optional" /></div>
-                      <div><label>Share currency</label><input value={linkForm.share_currency} onChange={(e) => setLinkForm((f) => ({ ...f, share_currency: e.target.value }))} placeholder="e.g. AED" /></div>
-                    </div>
-                  )}
-                  {(linkForm.link_type === "director" || linkForm.link_type === "manages" || linkForm.link_type === "employee") && (
-                    <div style={{ marginBottom: 12 }}>
-                      <label>Role / title</label>
-                      <input value={linkForm.role_label} onChange={(e) => setLinkForm((f) => ({ ...f, role_label: e.target.value }))} placeholder="e.g. Managing Director, Accountant" style={{ width: "100%", maxWidth: 320 }} />
-                    </div>
-                  )}
-                  {linkForm.link_type === "director" && (
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, cursor: "pointer" }}>
-                      <input type="checkbox" checked={linkForm.is_nominee} onChange={(e) => setLinkForm((f) => ({ ...f, is_nominee: e.target.checked }))} />
-                      <span>Nominee director</span>
-                    </label>
-                  )}
-                  {linkForm.link_type === "family" && (
-                    <div style={{ marginBottom: 12 }}>
-                      <label>Relationship</label>
-                      <select value={linkForm.relationship_kind} onChange={(e) => setLinkForm((f) => ({ ...f, relationship_kind: e.target.value }))} required style={{ width: 200 }}>
-                        <option value="">Select</option>
-                        {FAMILY_KINDS.map((k) => (<option key={k} value={k}>{k}</option>))}
-                      </select>
-                    </div>
-                  )}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
-                    <div><label>Start date</label><input type="date" value={linkForm.start_date} onChange={(e) => setLinkForm((f) => ({ ...f, start_date: e.target.value }))} /></div>
-                    <div><label>End date</label><input type="date" value={linkForm.end_date} onChange={(e) => setLinkForm((f) => ({ ...f, end_date: e.target.value }))} /></div>
-                  </div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button type="submit" className="btn-primary btn-sm" disabled={linkFormSaving}>
-                      {linkFormSaving ? (<><div className="loading-spinner" style={{ width: 12, height: 12 }}></div> Saving...</>) : (linkFormMode === "add" ? "Add connection" : "Save changes")}
-                    </button>
-                    <button type="button" className="btn-ghost btn-sm" onClick={closeLinkForm}>Cancel</button>
-                  </div>
-                </form>
-              )}
               {linkData === null ? (
                 <div style={{ padding: 24, color: "var(--text-tertiary)", fontSize: 14 }}>Unable to load connections.</div>
               ) : (
@@ -1461,58 +1385,272 @@ export default function ContactDetailPage() {
                 </>
               )}
             </div>
+            </div>
           )}
 
         </div>{/* end right main area */}
       </div>{/* end two-column layout */}
+
+      {/* ═══════ Connection Form SlideOverPanel ═══════ */}
+      <SlideOverPanel open={linkFormOpen} onClose={closeLinkForm} title={linkFormMode === "add" ? "Add Connection" : "Edit Connection"} subtitle={linkFormMode === "edit" ? `Editing link to: ${linkFormOtherName}` : "Create a new ownership or relationship link"}>
+        <form onSubmit={submitLinkForm} style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+          <div style={{ flex: 1, padding: "16px 0", display: "flex", flexDirection: "column", gap: 14 }}>
+            {linkFormError && <div className="alert alert-danger">{linkFormError}</div>}
+            {linkFormMode === "add" && (
+              <>
+                <FormField label="Direction">
+                  <select value={linkForm.thisContactIsOwner ? "owner" : "owned"} onChange={(e) => setLinkForm((f) => ({ ...f, thisContactIsOwner: e.target.value === "owner" }))} style={{ margin: 0 }}>
+                    <option value="owner">This contact is the owner (subject)</option>
+                    <option value="owned">This contact is the owned (object)</option>
+                  </select>
+                </FormField>
+                <FormField label="Other Contact" required>
+                  <select value={linkForm.other_contact_id} onChange={(e) => setLinkForm((f) => ({ ...f, other_contact_id: e.target.value }))} required style={{ margin: 0 }}>
+                    <option value="">Select contact</option>
+                    {linkFormFilteredContacts().map((c) => (<option key={c.id} value={c.id}>{c.name} ({c.contact_type})</option>))}
+                  </select>
+                </FormField>
+              </>
+            )}
+            {linkFormMode === "edit" && linkForm.other_contact_id && (
+              <p style={{ fontSize: 14, color: "var(--text-secondary)" }}>Link to: <strong>{linkFormOtherName || linkForm.other_contact_id}</strong></p>
+            )}
+            <FormField label="Link Type">
+              <select value={linkForm.link_type} onChange={(e) => setLinkForm((f) => ({ ...f, link_type: e.target.value }))} style={{ margin: 0 }}>
+                {LINK_TYPES.map((t) => (<option key={t} value={t}>{t}</option>))}
+              </select>
+            </FormField>
+            {(linkForm.link_type === "ownership" || linkForm.link_type === "control") && (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <FormField label="Percentage (%)"><input type="number" min={0} max={100} step={0.01} value={linkForm.percentage ?? ""} onChange={(e) => setLinkForm((f) => ({ ...f, percentage: e.target.value === "" ? null : parseFloat(e.target.value) }))} placeholder="e.g. 50" style={{ margin: 0 }} /></FormField>
+                  <FormField label="Voting %"><input type="number" min={0} max={100} step={0.01} value={linkForm.voting_pct ?? ""} onChange={(e) => setLinkForm((f) => ({ ...f, voting_pct: e.target.value === "" ? null : parseFloat(e.target.value) }))} placeholder="Optional" style={{ margin: 0 }} /></FormField>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <FormField label="Number of Shares"><input type="number" min={0} value={linkForm.number_of_shares ?? ""} onChange={(e) => setLinkForm((f) => ({ ...f, number_of_shares: e.target.value === "" ? null : parseFloat(e.target.value) }))} placeholder="Optional" style={{ margin: 0 }} /></FormField>
+                  <FormField label="Share Class"><input value={linkForm.share_class} onChange={(e) => setLinkForm((f) => ({ ...f, share_class: e.target.value }))} placeholder="e.g. ordinary" style={{ margin: 0 }} /></FormField>
+                  <FormField label="Nominal Value/Share"><input type="number" min={0} step={0.01} value={linkForm.nominal_value_per_share ?? ""} onChange={(e) => setLinkForm((f) => ({ ...f, nominal_value_per_share: e.target.value === "" ? null : parseFloat(e.target.value) }))} placeholder="Optional" style={{ margin: 0 }} /></FormField>
+                  <FormField label="Share Currency"><input value={linkForm.share_currency} onChange={(e) => setLinkForm((f) => ({ ...f, share_currency: e.target.value }))} placeholder="e.g. AED" style={{ margin: 0 }} /></FormField>
+                </div>
+              </>
+            )}
+            {(linkForm.link_type === "director" || linkForm.link_type === "manages" || linkForm.link_type === "employee") && (
+              <FormField label="Role / Title"><input value={linkForm.role_label} onChange={(e) => setLinkForm((f) => ({ ...f, role_label: e.target.value }))} placeholder="e.g. Managing Director" style={{ margin: 0 }} /></FormField>
+            )}
+            {linkForm.link_type === "director" && (
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                <input type="checkbox" checked={linkForm.is_nominee} onChange={(e) => setLinkForm((f) => ({ ...f, is_nominee: e.target.checked }))} />
+                <span style={{ fontSize: 13 }}>Nominee director</span>
+              </label>
+            )}
+            {linkForm.link_type === "family" && (
+              <FormField label="Relationship" required>
+                <select value={linkForm.relationship_kind} onChange={(e) => setLinkForm((f) => ({ ...f, relationship_kind: e.target.value }))} required style={{ margin: 0 }}>
+                  <option value="">Select</option>
+                  {FAMILY_KINDS.map((k) => (<option key={k} value={k}>{k}</option>))}
+                </select>
+              </FormField>
+            )}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <FormField label="Start Date"><input type="date" value={linkForm.start_date} onChange={(e) => setLinkForm((f) => ({ ...f, start_date: e.target.value }))} style={{ margin: 0 }} /></FormField>
+              <FormField label="End Date"><input type="date" value={linkForm.end_date} onChange={(e) => setLinkForm((f) => ({ ...f, end_date: e.target.value }))} style={{ margin: 0 }} /></FormField>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 12, paddingTop: 16, borderTop: "1px solid var(--border-primary)" }}>
+            <button type="submit" className="btn-primary" style={{ flex: 1 }} disabled={linkFormSaving}>
+              {linkFormSaving ? "Saving..." : (linkFormMode === "add" ? "Add Connection" : "Save Changes")}
+            </button>
+            <button type="button" className="btn-ghost" onClick={closeLinkForm}>Cancel</button>
+          </div>
+        </form>
+      </SlideOverPanel>
+
+      {/* ═══════ Section Edit SlideOverPanel ═══════ */}
+      <SlideOverPanel open={!!editSection} onClose={() => { setEditSection(null); load(); }} title={editSection === "basic" ? "Edit Basic Info" : editSection === "company" ? "Edit Company Details" : editSection === "tax" ? "Edit Tax Info" : editSection === "individual" ? "Edit Individual Details" : editSection === "notes" ? "Edit Notes" : "Edit"} subtitle={contact.name}>
+        <form onSubmit={handleSaveContact} style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+          <div style={{ flex: 1, padding: "16px 0", overflowY: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
+
+            {editSection === "basic" && (<>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <FormField label="Name" required><input type="text" value={contact.name} onChange={(e) => setContact((c) => c ? { ...c, name: e.target.value } : null)} required style={{ margin: 0 }} /></FormField>
+                <FormField label="Email"><input type="email" value={contact.email || ""} onChange={(e) => setContact((c) => c ? { ...c, email: e.target.value || null } : null)} style={{ margin: 0 }} /></FormField>
+                <FormField label="Phone (primary)"><input value={contact.phone_primary || ""} onChange={(e) => setContact((c) => c ? { ...c, phone_primary: e.target.value || null } : null)} style={{ margin: 0 }} /></FormField>
+                <FormField label="Phone (mobile)"><input value={contact.phone_mobile || ""} onChange={(e) => setContact((c) => c ? { ...c, phone_mobile: e.target.value || null } : null)} style={{ margin: 0 }} /></FormField>
+                <FormField label="Phone (office)"><input value={contact.phone_office || ""} onChange={(e) => setContact((c) => c ? { ...c, phone_office: e.target.value || null } : null)} style={{ margin: 0 }} /></FormField>
+                <FormField label="Status">
+                  <select value={contact.status} onChange={(e) => setContact((c) => c ? { ...c, status: e.target.value } : null)} style={{ margin: 0 }}>
+                    <option value="active">Active</option><option value="expired">Expired</option><option value="under_renewal">Under Renewal</option><option value="cancelled">Cancelled</option>
+                  </select>
+                </FormField>
+                <FormField label="Country"><input value={contact.country || ""} onChange={(e) => setContact((c) => c ? { ...c, country: e.target.value || null } : null)} style={{ margin: 0 }} /></FormField>
+              </div>
+            </>)}
+
+            {editSection === "company" && (<>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <FormField label="Trade License No."><input value={contact.trade_license_no || ""} onChange={(e) => setContact((c) => c ? { ...c, trade_license_no: e.target.value || null } : null)} style={{ margin: 0 }} /></FormField>
+                <FormField label="Jurisdiction">
+                  <select value={contact.jurisdiction || ""} onChange={(e) => setContact((c) => c ? { ...c, jurisdiction: e.target.value || null } : null)} style={{ margin: 0 }}>
+                    {JURISDICTIONS.map((j) => <option key={j || "x"} value={j}>{j || "Select"}</option>)}
+                  </select>
+                </FormField>
+                <FormField label="Legal Form"><input value={contact.legal_form || ""} onChange={(e) => setContact((c) => c ? { ...c, legal_form: e.target.value || null } : null)} style={{ margin: 0 }} /></FormField>
+                <FormField label="Tax Registration"><input value={contact.tax_registration_no || ""} onChange={(e) => setContact((c) => c ? { ...c, tax_registration_no: e.target.value || null } : null)} style={{ margin: 0 }} /></FormField>
+                <FormField label="License Issue"><input type="date" value={toDateStr(contact.license_issue_date)} onChange={(e) => setContact((c) => c ? { ...c, license_issue_date: e.target.value || null } : null)} style={{ margin: 0 }} /></FormField>
+                <FormField label="License Expiry"><input type="date" value={toDateStr(contact.license_expiry_date)} onChange={(e) => setContact((c) => c ? { ...c, license_expiry_date: e.target.value || null } : null)} style={{ margin: 0 }} /></FormField>
+                <FormField label="Establishment Card Expiry"><input type="date" value={toDateStr(contact.establishment_card_expiry)} onChange={(e) => setContact((c) => c ? { ...c, establishment_card_expiry: e.target.value || null } : null)} style={{ margin: 0 }} /></FormField>
+                <FormField label="Visa Expiry"><input type="date" value={toDateStr(contact.visa_expiry_date)} onChange={(e) => setContact((c) => c ? { ...c, visa_expiry_date: e.target.value || null } : null)} style={{ margin: 0 }} /></FormField>
+              </div>
+              <FormField label="Website"><input value={contact.website || ""} onChange={(e) => setContact((c) => c ? { ...c, website: e.target.value || null } : null)} style={{ margin: 0 }} /></FormField>
+              <FormField label="Licensed Activities"><textarea value={contact.activity_license_activities || ""} onChange={(e) => setContact((c) => c ? { ...c, activity_license_activities: e.target.value || null } : null)} rows={2} style={{ margin: 0 }} /></FormField>
+            </>)}
+
+            {editSection === "tax" && (<>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "10px 14px", background: "var(--bg-tertiary)", borderRadius: "var(--radius-md)" }}>
+                <input type="checkbox" checked={contact.vat_registered ?? false} onChange={(e) => setContact((c) => c ? { ...c, vat_registered: e.target.checked } : null)} />
+                <span style={{ fontWeight: 600, fontSize: 13 }}>VAT Registered</span>
+              </label>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <FormField label="VAT Period Type">
+                  <select value={contact.vat_period_type || ""} onChange={(e) => setContact((c) => c ? { ...c, vat_period_type: e.target.value || null } : null)} style={{ margin: 0 }}>
+                    <option value="">—</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option>
+                  </select>
+                </FormField>
+                <FormField label="VAT Period End Day"><input type="number" min={1} max={31} value={contact.vat_period_end_day ?? ""} onChange={(e) => setContact((c) => c ? { ...c, vat_period_end_day: e.target.value ? parseInt(e.target.value, 10) : null } : null)} style={{ margin: 0 }} /></FormField>
+                <FormField label="First Period End"><input type="date" value={contact.vat_first_period_end_date ? contact.vat_first_period_end_date.slice(0, 10) : ""} onChange={(e) => setContact((c) => c ? { ...c, vat_first_period_end_date: e.target.value || null } : null)} style={{ margin: 0 }} /></FormField>
+                <FormField label="Return Due (days)"><input type="number" min={1} value={contact.vat_return_due_days ?? ""} onChange={(e) => setContact((c) => c ? { ...c, vat_return_due_days: e.target.value ? parseInt(e.target.value, 10) : null } : null)} style={{ margin: 0 }} /></FormField>
+              </div>
+              <FormField label="VAT Notes"><textarea value={contact.vat_notes || ""} onChange={(e) => setContact((c) => c ? { ...c, vat_notes: e.target.value || null } : null)} rows={2} style={{ margin: 0 }} /></FormField>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "10px 14px", background: "var(--bg-tertiary)", borderRadius: "var(--radius-md)" }}>
+                <input type="checkbox" checked={contact.ct_registered ?? false} onChange={(e) => setContact((c) => c ? { ...c, ct_registered: e.target.checked } : null)} />
+                <span style={{ fontWeight: 600, fontSize: 13 }}>CT Registered (Corporate Tax)</span>
+              </label>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <FormField label="CT Registration No."><input value={contact.ct_registration_no || ""} onChange={(e) => setContact((c) => c ? { ...c, ct_registration_no: e.target.value || null } : null)} style={{ margin: 0 }} /></FormField>
+                <FormField label="CT Period Type">
+                  <select value={contact.ct_period_type || ""} onChange={(e) => setContact((c) => c ? { ...c, ct_period_type: e.target.value || null } : null)} style={{ margin: 0 }}>
+                    <option value="">—</option><option value="calendar_year">Calendar year</option><option value="fiscal_year">Fiscal year</option>
+                  </select>
+                </FormField>
+                <FormField label="FY Start Month"><input type="number" min={1} max={12} value={contact.ct_financial_year_start_month ?? ""} onChange={(e) => setContact((c) => c ? { ...c, ct_financial_year_start_month: e.target.value ? parseInt(e.target.value, 10) : null } : null)} style={{ margin: 0 }} /></FormField>
+                <FormField label="FY Start Day"><input type="number" min={1} max={31} value={contact.ct_financial_year_start_day ?? ""} onChange={(e) => setContact((c) => c ? { ...c, ct_financial_year_start_day: e.target.value ? parseInt(e.target.value, 10) : null } : null)} style={{ margin: 0 }} /></FormField>
+                <FormField label="Filing Due (months)"><input type="number" min={1} value={contact.ct_filing_due_months ?? ""} onChange={(e) => setContact((c) => c ? { ...c, ct_filing_due_months: e.target.value ? parseInt(e.target.value, 10) : null } : null)} style={{ margin: 0 }} /></FormField>
+              </div>
+              <FormField label="CT Notes"><textarea value={contact.ct_notes || ""} onChange={(e) => setContact((c) => c ? { ...c, ct_notes: e.target.value || null } : null)} rows={2} style={{ margin: 0 }} /></FormField>
+            </>)}
+
+            {editSection === "individual" && (<>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <FormField label="First Name"><input value={contact.first_name || ""} onChange={(e) => setContact((c) => c ? { ...c, first_name: e.target.value || null } : null)} style={{ margin: 0 }} /></FormField>
+                <FormField label="Last Name"><input value={contact.last_name || ""} onChange={(e) => setContact((c) => c ? { ...c, last_name: e.target.value || null } : null)} style={{ margin: 0 }} /></FormField>
+                <FormField label="Passport No."><input value={contact.passport_no || ""} onChange={(e) => setContact((c) => c ? { ...c, passport_no: e.target.value || null } : null)} style={{ margin: 0 }} /></FormField>
+                <FormField label="Passport Expiry"><input type="date" value={toDateStr(contact.passport_expiry)} onChange={(e) => setContact((c) => c ? { ...c, passport_expiry: e.target.value || null } : null)} style={{ margin: 0 }} /></FormField>
+                <FormField label="Nationality"><input value={contact.nationality || ""} onChange={(e) => setContact((c) => c ? { ...c, nationality: e.target.value || null } : null)} style={{ margin: 0 }} /></FormField>
+                <FormField label="Date of Birth"><input type="date" value={toDateStr(contact.date_of_birth)} onChange={(e) => setContact((c) => c ? { ...c, date_of_birth: e.target.value || null } : null)} style={{ margin: 0 }} /></FormField>
+                <FormField label="Visa Type"><input value={contact.visa_type || ""} onChange={(e) => setContact((c) => c ? { ...c, visa_type: e.target.value || null } : null)} style={{ margin: 0 }} /></FormField>
+                <FormField label="Visa Expiry"><input type="date" value={toDateStr(contact.visa_expiry_date)} onChange={(e) => setContact((c) => c ? { ...c, visa_expiry_date: e.target.value || null } : null)} style={{ margin: 0 }} /></FormField>
+                <FormField label="Emirates ID"><input value={contact.emirates_id || ""} onChange={(e) => setContact((c) => c ? { ...c, emirates_id: e.target.value || null } : null)} style={{ margin: 0 }} /></FormField>
+                <FormField label="Emirates ID Expiry"><input type="date" value={toDateStr(contact.emirates_id_expiry)} onChange={(e) => setContact((c) => c ? { ...c, emirates_id_expiry: e.target.value || null } : null)} style={{ margin: 0 }} /></FormField>
+                <FormField label="Gender">
+                  <select value={contact.gender || ""} onChange={(e) => setContact((c) => c ? { ...c, gender: e.target.value || null } : null)} style={{ margin: 0 }}>
+                    <option value="">—</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option>
+                  </select>
+                </FormField>
+                <FormField label="Designation"><input value={contact.designation_title || ""} onChange={(e) => setContact((c) => c ? { ...c, designation_title: e.target.value || null } : null)} style={{ margin: 0 }} /></FormField>
+              </div>
+            </>)}
+
+            {editSection === "notes" && (
+              <FormField label="Notes"><textarea value={contact.notes || ""} onChange={(e) => setContact((c) => c ? { ...c, notes: e.target.value || null } : null)} rows={6} style={{ margin: 0 }} /></FormField>
+            )}
+
+          </div>
+          <div style={{ display: "flex", gap: 12, paddingTop: 16, borderTop: "1px solid var(--border-primary)" }}>
+            <button type="submit" className="btn-primary" style={{ flex: 1 }} disabled={saving}>
+              {saving ? "Saving..." : "Save Changes"}
+            </button>
+            <button type="button" className="btn-ghost" onClick={() => { setEditSection(null); load(); }}>Cancel</button>
+          </div>
+        </form>
+      </SlideOverPanel>
+
+      {/* ═══════ Add Address SlideOverPanel ═══════ */}
+      <SlideOverPanel open={newAddrOpen} onClose={() => setNewAddrOpen(false)} title="Add Address" subtitle="Add a new address for this contact">
+        <form onSubmit={addAddress} style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+          <div style={{ flex: 1, padding: "16px 0", display: "flex", flexDirection: "column", gap: 14 }}>
+            <FormField label="Address Type">
+              <select value={newAddr.address_type} onChange={(e) => setNewAddr({ ...newAddr, address_type: e.target.value })} style={{ margin: 0 }}>
+                {ADDRESS_TYPES.map((t) => <option key={t} value={t}>{t.replace("_", " ")}</option>)}
+              </select>
+            </FormField>
+            <FormField label="Address Line 1" required>
+              <input type="text" value={newAddr.address_line_1} onChange={(e) => setNewAddr({ ...newAddr, address_line_1: e.target.value })} required placeholder="Street address" style={{ margin: 0 }} />
+            </FormField>
+            <FormField label="Address Line 2">
+              <input type="text" value={newAddr.address_line_2} onChange={(e) => setNewAddr({ ...newAddr, address_line_2: e.target.value })} placeholder="Suite, floor, etc." style={{ margin: 0 }} />
+            </FormField>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <FormField label="City"><input type="text" value={newAddr.city} onChange={(e) => setNewAddr({ ...newAddr, city: e.target.value })} style={{ margin: 0 }} /></FormField>
+              <FormField label="Emirate / State"><input type="text" value={newAddr.state_emirate} onChange={(e) => setNewAddr({ ...newAddr, state_emirate: e.target.value })} style={{ margin: 0 }} /></FormField>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <FormField label="Postal Code"><input type="text" value={newAddr.postal_code} onChange={(e) => setNewAddr({ ...newAddr, postal_code: e.target.value })} style={{ margin: 0 }} /></FormField>
+              <FormField label="Country"><input type="text" value={newAddr.country} onChange={(e) => setNewAddr({ ...newAddr, country: e.target.value })} style={{ margin: 0 }} /></FormField>
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+              <input type="checkbox" checked={newAddr.is_primary} onChange={(e) => setNewAddr({ ...newAddr, is_primary: e.target.checked })} />
+              <span style={{ fontSize: 13, fontWeight: 600 }}>Primary address</span>
+            </label>
+            <FormField label="Notes">
+              <textarea rows={2} value={newAddr.notes} onChange={(e) => setNewAddr({ ...newAddr, notes: e.target.value })} placeholder="Optional notes" style={{ margin: 0 }} />
+            </FormField>
+          </div>
+          <div style={{ display: "flex", gap: 12, paddingTop: 16, borderTop: "1px solid var(--border-primary)" }}>
+            <button type="submit" className="btn-primary" style={{ flex: 1 }} disabled={addingAddr}>
+              {addingAddr ? "Adding..." : "Add Address"}
+            </button>
+            <button type="button" className="btn-ghost" onClick={() => setNewAddrOpen(false)}>Cancel</button>
+          </div>
+        </form>
+      </SlideOverPanel>
+
+      {/* ═══════ Edit Address SlideOverPanel ═══════ */}
+      <SlideOverPanel open={!!editingAddrId} onClose={() => setEditingAddrId(null)} title="Edit Address" subtitle={editAddr.address_type.replace("_", " ")}>
+        <form onSubmit={(e) => { e.preventDefault(); if (editingAddrId) updateAddress(editingAddrId, { address_type: editAddr.address_type, address_line_1: editAddr.address_line_1, address_line_2: editAddr.address_line_2 || null, city: editAddr.city || null, state_emirate: editAddr.state_emirate || null, postal_code: editAddr.postal_code || null, country: editAddr.country || null, is_primary: editAddr.is_primary, notes: editAddr.notes || null }); }} style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+          <div style={{ flex: 1, padding: "16px 0", overflowY: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
+            <FormField label="Address Type">
+              <select value={editAddr.address_type} onChange={(e) => setEditAddr({ ...editAddr, address_type: e.target.value })} style={{ margin: 0 }}>
+                {ADDRESS_TYPES.map((t) => <option key={t} value={t}>{t.replace("_", " ")}</option>)}
+              </select>
+            </FormField>
+            <FormField label="Address Line 1" required>
+              <input type="text" value={editAddr.address_line_1} onChange={(e) => setEditAddr({ ...editAddr, address_line_1: e.target.value })} required style={{ margin: 0 }} />
+            </FormField>
+            <FormField label="Address Line 2">
+              <input type="text" value={editAddr.address_line_2} onChange={(e) => setEditAddr({ ...editAddr, address_line_2: e.target.value })} placeholder="Suite, floor, etc." style={{ margin: 0 }} />
+            </FormField>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <FormField label="City"><input type="text" value={editAddr.city} onChange={(e) => setEditAddr({ ...editAddr, city: e.target.value })} style={{ margin: 0 }} /></FormField>
+              <FormField label="Emirate / State"><input type="text" value={editAddr.state_emirate} onChange={(e) => setEditAddr({ ...editAddr, state_emirate: e.target.value })} style={{ margin: 0 }} /></FormField>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <FormField label="Postal Code"><input type="text" value={editAddr.postal_code} onChange={(e) => setEditAddr({ ...editAddr, postal_code: e.target.value })} style={{ margin: 0 }} /></FormField>
+              <FormField label="Country"><input type="text" value={editAddr.country} onChange={(e) => setEditAddr({ ...editAddr, country: e.target.value })} style={{ margin: 0 }} /></FormField>
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+              <input type="checkbox" checked={editAddr.is_primary} onChange={(e) => setEditAddr({ ...editAddr, is_primary: e.target.checked })} />
+              <span style={{ fontSize: 13, fontWeight: 600 }}>Primary address</span>
+            </label>
+            <FormField label="Notes">
+              <textarea rows={2} value={editAddr.notes} onChange={(e) => setEditAddr({ ...editAddr, notes: e.target.value })} placeholder="Optional notes" style={{ margin: 0 }} />
+            </FormField>
+          </div>
+          <div style={{ display: "flex", gap: 12, paddingTop: 16, borderTop: "1px solid var(--border-primary)" }}>
+            <button type="submit" className="btn-primary" style={{ flex: 1 }}>Save Address</button>
+            <button type="button" className="btn-ghost" onClick={() => setEditingAddrId(null)}>Cancel</button>
+          </div>
+        </form>
+      </SlideOverPanel>
     </div>
-  );
-}
-
-function AddressEditForm({
-  addr,
-  onSave,
-  onCancel,
-}: {
-  addr: Address;
-  onSave: (patch: { address_type?: string; address_line_1?: string; address_line_2?: string | null; city?: string | null; state_emirate?: string | null; postal_code?: string | null; country?: string | null; is_primary?: boolean; notes?: string | null }) => void;
-  onCancel: () => void;
-}) {
-  const [address_type, setAddressType] = useState(addr.address_type);
-  const [address_line_1, setAddressLine1] = useState(addr.address_line_1);
-  const [address_line_2, setAddressLine2] = useState(addr.address_line_2 || "");
-  const [city, setCity] = useState(addr.city || "");
-  const [state_emirate, setStateEmirate] = useState(addr.state_emirate || "");
-  const [postal_code, setPostalCode] = useState(addr.postal_code || "");
-  const [country, setCountry] = useState(addr.country || "");
-  const [is_primary, setIsPrimary] = useState(addr.is_primary ?? false);
-  const [notes, setNotes] = useState(addr.notes || "");
-
-  return (
-    <form
-      onSubmit={(e) => { e.preventDefault(); onSave({ address_type, address_line_1, address_line_2: address_line_2 || null, city: city || null, state_emirate: state_emirate || null, postal_code: postal_code || null, country: country || null, is_primary, notes: notes || null }); }}
-      style={{ display: "flex", flexDirection: "column", gap: 8 }}
-    >
-      <select value={address_type} onChange={(e) => setAddressType(e.target.value)} style={{ width: 180 }}>
-        {ADDRESS_TYPES.map((t) => <option key={t} value={t}>{t.replace("_", " ")}</option>)}
-      </select>
-      <input value={address_line_1} onChange={(e) => setAddressLine1(e.target.value)} required placeholder="Address line 1" />
-      <input value={address_line_2} onChange={(e) => setAddressLine2(e.target.value)} placeholder="Address line 2" />
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-        <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" />
-        <input value={state_emirate} onChange={(e) => setStateEmirate(e.target.value)} placeholder="Emirate" />
-        <input value={postal_code} onChange={(e) => setPostalCode(e.target.value)} placeholder="Postal code" />
-      </div>
-      <input value={country} onChange={(e) => setCountry(e.target.value)} placeholder="Country" />
-      <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-        <input type="checkbox" checked={is_primary} onChange={(e) => setIsPrimary(e.target.checked)} />
-        <span>Primary address</span>
-      </label>
-      <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Address notes (optional)" rows={2} style={{ width: "100%", padding: 8, border: "1px solid var(--border)", borderRadius: 6 }} />
-      <div style={{ display: "flex", gap: 8 }}>
-        <button type="submit" className="btn-primary btn-sm">Save</button>
-        <button type="button" className="btn-ghost btn-sm" onClick={onCancel}>Cancel</button>
-      </div>
-    </form>
   );
 }

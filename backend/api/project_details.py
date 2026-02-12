@@ -522,6 +522,7 @@ def _append_doc_checklist_for_product(db: Session, project_id: str, org_id: str,
             project_id=project_id, org_id=org_id,
             requirement_name=req.document_name,
             document_category=req.document_category,
+            document_type=getattr(req, "document_type", "required"),
             sort_order=max_sort,
         )
         db.add(item)

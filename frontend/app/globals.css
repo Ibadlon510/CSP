@@ -1349,10 +1349,10 @@ tbody td {
 /* ═══════ Dashboard Shell & Responsive Sidebar ═══════ */
 .dashboard-shell {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   background: var(--bg-primary);
   max-width: 100vw;
-  overflow-x: hidden;
 }
 .dashboard-sidebar {
   width: 260px;

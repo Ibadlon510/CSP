@@ -352,6 +352,7 @@ def create_document_requirement(
         product_id=product_id,
         document_name=body.document_name,
         document_category=body.document_category,
+        document_type=body.document_type,
         sort_order=body.sort_order if body.sort_order is not None else 0,
     )
     db.add(r)
@@ -360,6 +361,7 @@ def create_document_requirement(
     return ProductDocumentRequirementResponse(
         id=r.id, product_id=r.product_id, org_id=r.org_id,
         document_name=r.document_name, document_category=r.document_category,
+        document_type=r.document_type,
         sort_order=r.sort_order,
     )
 

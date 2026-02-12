@@ -141,6 +141,7 @@ export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null);
   const [summary, setSummary] = useState<DashSummary | null>(null);
   const [todayActivities, setTodayActivities] = useState<any[]>([]);
+  const [upcomingMeetings, setUpcomingMeetings] = useState<any[]>([]);
   const [teamUsers, setTeamUsers] = useState<TeamUser[]>([]);
   const [todayProjects, setTodayProjects] = useState<any[]>([]);
   const [actMapPeriod, setActMapPeriod] = useState<"daily" | "weekly" | "monthly">("daily");
@@ -153,6 +154,12 @@ export default function DashboardPage() {
     api.get("/api/projects/dashboard/summary").then((d: any) => setSummary(d)).catch(() => {});
     api.get("/api/users/").then((d: any) => setTeamUsers(d as TeamUser[])).catch(() => {});
     api.get("/api/projects/?status=in_progress").then((d: any) => setTodayProjects((d as any[]).slice(0, 4))).catch(() => {});
+    // Fetch upcoming meetings (next 7 days, all org, pending)
+    const now = new Date();
+    const next7 = new Date(now); next7.setDate(next7.getDate() + 7);
+    api.get(`/api/activities/?start_date=${now.toISOString()}&end_date=${next7.toISOString()}&status=pending`)
+      .then((d: any) => setUpcomingMeetings((d as any[]).filter((a: any) => a.activity_type === "meeting").slice(0, 5)))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -177,7 +184,7 @@ export default function DashboardPage() {
     (acc[key] = acc[key] || []).push(a);
     return acc;
   }, {});
-  const upcomingMeetings = todayActivities.filter((a) => a.activity_type === "meeting").slice(0, 3);
+  // upcomingMeetings is now fetched separately (next 7 days, all org)
 
   return (
     <div>
@@ -397,7 +404,10 @@ export default function DashboardPage() {
 
           {/* Upcoming Meetings */}
           <div className="card">
-            <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)", marginBottom: 16, letterSpacing: "-0.014em" }}>Upcoming Meetings</h3>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "-0.014em" }}>Upcoming Meetings</h3>
+              <a href="/dashboard/calendar?view=list" className="btn-ghost btn-sm" style={{ fontSize: 12, padding: "4px 8px", textDecoration: "none" }}>View all →</a>
+            </div>
             {upcomingMeetings.length === 0 ? (
               <p style={{ fontSize: 13, color: "var(--text-quaternary)" }}>No upcoming meetings</p>
             ) : (

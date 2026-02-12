@@ -17,10 +17,11 @@ from models.activity import (
     ActivityStatus,
     ActivityReminder,
     ActivityRecurrence,
+    ActivityAssignee,
 )
 from models.base import utcnow
 from services.audit import log_action
-from schemas.activity import ActivityCreate, ActivityUpdate, ActivityResponse
+from schemas.activity import ActivityCreate, ActivityUpdate, ActivityResponse, ActivityAssigneeInfo
 
 router = APIRouter(prefix="/api/activities", tags=["Activities"])
 
@@ -47,6 +48,12 @@ def _enrich_activity(a: Activity, db: Session) -> ActivityResponse:
     if a.status == ActivityStatus.PENDING and a.end_datetime:
         end = a.end_datetime if a.end_datetime.tzinfo else a.end_datetime.replace(tzinfo=timezone.utc)
         data.is_overdue = now > end
+    # Multi-assignees
+    assignee_rows = db.query(ActivityAssignee).filter(ActivityAssignee.activity_id == a.id).all()
+    for row in assignee_rows:
+        u = db.query(User).filter(User.id == row.user_id).first()
+        if u:
+            data.assignees.append(ActivityAssigneeInfo(id=u.id, full_name=u.full_name))
     return data
 
 
@@ -129,6 +136,10 @@ def create_project_activity(
     if payload.end_datetime <= payload.start_datetime:
         raise HTTPException(400, "End datetime must be after start datetime")
 
+    # Resolve assignee: prefer assigned_to_ids list, fall back to single assigned_to
+    assignee_ids = payload.assigned_to_ids if payload.assigned_to_ids else ([payload.assigned_to] if payload.assigned_to else [])
+    primary_assignee = assignee_ids[0] if assignee_ids else None
+
     activity = Activity(
         org_id=current_user.org_id,
         project_id=project_id,
@@ -142,25 +153,32 @@ def create_project_activity(
         reminder=payload.reminder,
         recurrence=payload.recurrence,
         status=ActivityStatus.PENDING,
-        assigned_to=payload.assigned_to,
+        assigned_to=primary_assignee,
         created_by=current_user.id,
     )
     db.add(activity)
     db.commit()
     db.refresh(activity)
 
-    # Notify assignee
-    if activity.assigned_to and activity.assigned_to != current_user.id:
-        db.add(Notification(
-            org_id=current_user.org_id,
-            user_id=activity.assigned_to,
-            title="Activity Assigned",
-            message=f'{current_user.full_name} assigned you activity "{activity.title}" in project "{project.title}".',
-            category="activity",
-            resource_type="activity",
-            resource_id=activity.id,
-        ))
+    # Insert M2M assignees
+    for uid in assignee_ids:
+        db.add(ActivityAssignee(activity_id=activity.id, user_id=uid))
+    if assignee_ids:
         db.commit()
+
+    # Notify each assignee (except creator)
+    for uid in assignee_ids:
+        if uid != current_user.id:
+            db.add(Notification(
+                org_id=current_user.org_id,
+                user_id=uid,
+                title="Activity Assigned",
+                message=f'{current_user.full_name} assigned you activity "{activity.title}" in project "{project.title}".',
+                category="activity",
+                resource_type="activity",
+                resource_id=activity.id,
+            ))
+    db.commit()
 
     log_action(db, action="create", user_id=current_user.id, org_id=current_user.org_id,
                resource="activity", resource_id=activity.id,
@@ -311,22 +329,36 @@ def update_activity(
     elif payload.completion_notes is not None:
         activity.completion_notes = payload.completion_notes
 
+    # Sync M2M assignees if provided
+    if payload.assigned_to_ids is not None:
+        # Delete old assignees
+        db.query(ActivityAssignee).filter(ActivityAssignee.activity_id == activity.id).delete()
+        # Set primary assignee
+        if payload.assigned_to_ids:
+            activity.assigned_to = payload.assigned_to_ids[0]
+        # Insert new assignees
+        for uid in payload.assigned_to_ids:
+            db.add(ActivityAssignee(activity_id=activity.id, user_id=uid))
+
     db.commit()
     db.refresh(activity)
 
-    # Notify new assignee
-    if payload.assigned_to and payload.assigned_to != old_assignee and payload.assigned_to != current_user.id:
-        project = db.query(Project).filter(Project.id == activity.project_id).first()
-        db.add(Notification(
-            org_id=current_user.org_id,
-            user_id=payload.assigned_to,
-            title="Activity Assigned",
-            message=f'{current_user.full_name} assigned you activity "{activity.title}"' + (f' in project "{project.title}".' if project else "."),
-            category="activity",
-            resource_type="activity",
-            resource_id=activity.id,
-        ))
-        db.commit()
+    # Notify new assignees
+    old_assignee_set = {old_assignee} if old_assignee else set()
+    new_assignee_ids = payload.assigned_to_ids if payload.assigned_to_ids is not None else ([payload.assigned_to] if payload.assigned_to and payload.assigned_to != old_assignee else [])
+    for uid in new_assignee_ids:
+        if uid and uid not in old_assignee_set and uid != current_user.id:
+            project = db.query(Project).filter(Project.id == activity.project_id).first()
+            db.add(Notification(
+                org_id=current_user.org_id,
+                user_id=uid,
+                title="Activity Assigned",
+                message=f'{current_user.full_name} assigned you activity "{activity.title}"' + (f' in project "{project.title}".' if project else "."),
+                category="activity",
+                resource_type="activity",
+                resource_id=activity.id,
+            ))
+    db.commit()
 
     log_action(db, action="update", user_id=current_user.id, org_id=current_user.org_id,
                resource="activity", resource_id=activity.id,

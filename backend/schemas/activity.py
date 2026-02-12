@@ -1,7 +1,13 @@
 """Pydantic schemas for activities (calendar events)."""
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
+
+
+class ActivityAssigneeInfo(BaseModel):
+    """Minimal user info for assignee display."""
+    id: str
+    full_name: str
 
 
 class ActivityCreate(BaseModel):
@@ -10,7 +16,8 @@ class ActivityCreate(BaseModel):
     description: Optional[str] = None
     activity_type: str = "other"  # call, meeting, follow_up, visit, other
     contact_id: Optional[str] = None
-    assigned_to: Optional[str] = None
+    assigned_to: Optional[str] = None  # kept for backward compat (single assignee)
+    assigned_to_ids: List[str] = []  # multi-assignee list
     start_datetime: datetime
     end_datetime: datetime
     location: Optional[str] = Field(None, max_length=255)
@@ -25,6 +32,7 @@ class ActivityUpdate(BaseModel):
     activity_type: Optional[str] = None
     contact_id: Optional[str] = None
     assigned_to: Optional[str] = None
+    assigned_to_ids: Optional[List[str]] = None  # if provided, sync M2M
     start_datetime: Optional[datetime] = None
     end_datetime: Optional[datetime] = None
     location: Optional[str] = Field(None, max_length=255)
@@ -62,6 +70,7 @@ class ActivityResponse(BaseModel):
     project_title: Optional[str] = None
     contact_name: Optional[str] = None
     is_overdue: bool = False
+    assignees: List[ActivityAssigneeInfo] = []
 
     class Config:
         from_attributes = True

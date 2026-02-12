@@ -63,6 +63,7 @@ class ProductDocumentRequirement(TimestampMixin, Base):
     org_id = Column(String, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
     document_name = Column(String(255), nullable=False)
     document_category = Column(String(100), nullable=True)
+    document_type = Column(String(20), nullable=False, default="required")  # "required" | "deliverable"
     sort_order = Column(Integer, nullable=False, default=0)
 
     product = relationship("Product", back_populates="document_requirements")

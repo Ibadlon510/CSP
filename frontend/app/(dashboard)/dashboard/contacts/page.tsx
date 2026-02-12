@@ -10,6 +10,9 @@ import { SpreadsheetView } from "@/components/ui/SpreadsheetView";
 import { KanbanView, type KanbanColumnConfig, type GenericCardData } from "@/components/ui/KanbanView";
 import { TimelineView } from "@/components/ui/TimelineView";
 import { Pill } from "@/components/ui/Pill";
+import { SlideOverPanel } from "@/components/ui/SlideOverPanel";
+import { FormField } from "@/components/ui/FormField";
+import { useToast } from "@/components/Toast";
 import { exportToCsv } from "@/lib/export";
 
 interface Contact {
@@ -57,6 +60,36 @@ export default function ContactsPage() {
   const [groupBy, setGroupBy] = useState("");
   const [viewMode, setViewMode] = useState("spreadsheet");
   const [showExpiring, setShowExpiring] = useState(searchParams.get("expiring") === "1");
+  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
+  const [quickForm, setQuickForm] = useState({ contact_type: "company" as string, name: "", email: "", phone_primary: "", status: "active" });
+  const [quickSaving, setQuickSaving] = useState(false);
+  const toast = useToast();
+
+  async function handleQuickCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setQuickSaving(true);
+    try {
+      const created: any = await api.post("/api/contacts/", {
+        contact_type: quickForm.contact_type,
+        name: quickForm.name,
+        email: quickForm.email || null,
+        phone_primary: quickForm.phone_primary || null,
+        status: quickForm.status,
+      });
+      toast.success("Contact created");
+      setQuickForm({ contact_type: "company", name: "", email: "", phone_primary: "", status: "active" });
+      setQuickCreateOpen(false);
+      if (created?.id) {
+        router.push(`/dashboard/contacts/${created.id}`);
+      } else {
+        load();
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to create contact");
+    } finally {
+      setQuickSaving(false);
+    }
+  }
 
   function load() {
     setLoading(true);
@@ -116,10 +149,10 @@ export default function ContactsPage() {
             <Icon path="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M17 8l-5-5-5 5 M12 3v12" size={16} />
             Export
           </button>
-          <a href="/dashboard/contacts/new" className="btn-primary">
+          <button className="btn-primary" onClick={() => { setQuickForm({ contact_type: "company", name: "", email: "", phone_primary: "", status: "active" }); setQuickCreateOpen(true); }}>
             <Icon path="M12 5v14 M5 12h14" size={16} />
             New Contact
-          </a>
+          </button>
         </div>
       </div>
 
@@ -247,6 +280,47 @@ export default function ContactsPage() {
           Showing {filteredContacts.length} contact{filteredContacts.length !== 1 ? "s" : ""}
         </div>
       )}
+
+      {/* ═══════ Quick Create Contact SlideOverPanel ═══════ */}
+      <SlideOverPanel open={quickCreateOpen} onClose={() => setQuickCreateOpen(false)} title="New Contact" subtitle="Quick create — add details later">
+        <form onSubmit={handleQuickCreate} style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+          <div style={{ flex: 1, padding: "16px 0", display: "flex", flexDirection: "column", gap: 16 }}>
+            <FormField label="Contact Type" required>
+              <div style={{ display: "flex", gap: 12 }}>
+                {["company", "individual"].map((t) => (
+                  <label key={t} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "10px 16px", flex: 1, background: quickForm.contact_type === t ? "var(--bg-tertiary)" : "transparent", border: "1px solid var(--border-primary)", borderRadius: "var(--radius-md)", textTransform: "capitalize", fontWeight: 500, fontSize: 13 }}>
+                    <input type="radio" name="qc_type" checked={quickForm.contact_type === t} onChange={() => setQuickForm({ ...quickForm, contact_type: t })} />
+                    {t}
+                  </label>
+                ))}
+              </div>
+            </FormField>
+            <FormField label="Name" required>
+              <input type="text" value={quickForm.name} onChange={(e) => setQuickForm({ ...quickForm, name: e.target.value })} required placeholder={quickForm.contact_type === "company" ? "Company legal name" : "Full name"} style={{ margin: 0 }} />
+            </FormField>
+            <FormField label="Email">
+              <input type="email" value={quickForm.email} onChange={(e) => setQuickForm({ ...quickForm, email: e.target.value })} placeholder="Primary email" style={{ margin: 0 }} />
+            </FormField>
+            <FormField label="Phone">
+              <input type="text" value={quickForm.phone_primary} onChange={(e) => setQuickForm({ ...quickForm, phone_primary: e.target.value })} placeholder="+971 ..." style={{ margin: 0 }} />
+            </FormField>
+            <FormField label="Status">
+              <select value={quickForm.status} onChange={(e) => setQuickForm({ ...quickForm, status: e.target.value })} style={{ margin: 0 }}>
+                {CONTACT_STATUSES.map((s) => <option key={s} value={s}>{STATUS_CFG[s]?.label || s}</option>)}
+              </select>
+            </FormField>
+            <div style={{ padding: "12px 16px", background: "var(--bg-tertiary)", borderRadius: "var(--radius-md)", fontSize: 13, color: "var(--text-tertiary)" }}>
+              Need more fields? <a href="/dashboard/contacts/new" style={{ color: "var(--brand-primary)", fontWeight: 600 }}>Use the full form →</a>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 12, paddingTop: 16, borderTop: "1px solid var(--border-primary)" }}>
+            <button type="submit" className="btn-primary" style={{ flex: 1 }} disabled={quickSaving}>
+              {quickSaving ? "Creating..." : "Create Contact"}
+            </button>
+            <button type="button" className="btn-ghost" onClick={() => setQuickCreateOpen(false)}>Cancel</button>
+          </div>
+        </form>
+      </SlideOverPanel>
     </div>
   );
 }

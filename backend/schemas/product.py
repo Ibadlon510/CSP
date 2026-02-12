@@ -74,6 +74,7 @@ class ProductResponse(BaseModel):
 class ProductDocumentRequirementCreate(BaseModel):
     document_name: str = Field(..., max_length=255)
     document_category: Optional[str] = Field(None, max_length=100)
+    document_type: str = "required"  # "required" | "deliverable"
     sort_order: int = 0
 
 
@@ -83,6 +84,7 @@ class ProductDocumentRequirementResponse(BaseModel):
     org_id: str
     document_name: str
     document_category: Optional[str] = None
+    document_type: str = "required"
     sort_order: int
     created_at: datetime
     updated_at: datetime

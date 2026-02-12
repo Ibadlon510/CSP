@@ -47,6 +47,7 @@ from models.wallet import (
 )
 from models.document import Document, DocumentCategory, DocumentStatus
 from models.activity import Activity, ActivityType, ActivityStatus
+from models.compliance import OwnershipLink, OwnershipLinkType
 from constants.document_types import SYSTEM_DOCUMENT_CATEGORIES
 
 # Ensure tables exist
@@ -776,12 +777,15 @@ def seed_favorites(db: Session, org_id: str, user_id: str, projects: list):
 # 12. Activities
 # ─────────────────────────────────────────────────────────
 
-def seed_activities(db: Session, org_id: str, users: list, projects: list):
-    """Create today's activities for dashboards."""
+def seed_activities(db: Session, org_id: str, users: list, projects: list, contacts: list):
+    """Create today's activities for dashboards, linked to contacts."""
     if not projects:
         return
     demo, sarah, omar = users[0], users[1], users[2]
     today = NOW.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Map project index -> contact for linking activities to contacts
+    contact_map = {i: contacts[min(i, len(contacts) - 1)].id if contacts else None for i in range(len(projects))}
 
     activities_data = [
         (0, demo, "Client kick-off meeting", ActivityType.MEETING, 9, 0, 10, 0, "Meeting Room A"),
@@ -813,9 +817,60 @@ def seed_activities(db: Session, org_id: str, users: list, projects: list):
             start_datetime=start_dt, end_datetime=end_dt,
             status=ActivityStatus.PENDING if end_dt > NOW else ActivityStatus.COMPLETED,
             assigned_to=user.id, created_by=demo.id, location=location,
+            contact_id=contact_map.get(proj_idx),
         ))
         created += 1
     print(f"  Activities: {created} (meetings, calls, follow-ups, visits)")
+
+
+# ─────────────────────────────────────────────────────────
+# 13. Ownership Links (for Ownership Map)
+# ─────────────────────────────────────────────────────────
+
+def seed_ownership_links(db: Session, org_id: str, contacts: list):
+    """Create sample ownership links between contacts for the Ownership Map."""
+    if len(contacts) < 4:
+        print("  Ownership links: not enough contacts, skipping")
+        return
+    # companies = contacts[0:3], individuals = contacts[3:5]
+    links_data = [
+        # Ahmed Hassan owns 51% of Gulf Trading LLC
+        (3, 0, OwnershipLinkType.OWNERSHIP, 51.0, "Managing Director"),
+        # Sara Al Maktoum owns 49% of Gulf Trading LLC
+        (4, 0, OwnershipLinkType.OWNERSHIP, 49.0, None),
+        # Gulf Trading LLC owns 60% of Al Noor Services FZE
+        (0, 2, OwnershipLinkType.OWNERSHIP, 60.0, None),
+        # Ahmed Hassan is director of Al Noor Services FZE
+        (3, 2, OwnershipLinkType.DIRECTOR, None, "Director"),
+        # Sara Al Maktoum is director of Desert Sands Consulting
+        (4, 1, OwnershipLinkType.DIRECTOR, None, "Director"),
+        # Ahmed Hassan owns 40% of Desert Sands Consulting
+        (3, 1, OwnershipLinkType.OWNERSHIP, 40.0, None),
+    ]
+    created = 0
+    for owner_idx, owned_idx, link_type, pct, role in links_data:
+        if owner_idx >= len(contacts) or owned_idx >= len(contacts):
+            continue
+        owner = contacts[owner_idx]
+        owned = contacts[owned_idx]
+        existing = db.query(OwnershipLink).filter(
+            OwnershipLink.org_id == org_id,
+            OwnershipLink.owner_contact_id == owner.id,
+            OwnershipLink.owned_contact_id == owned.id,
+            OwnershipLink.link_type == link_type,
+        ).first()
+        if existing:
+            continue
+        db.add(OwnershipLink(
+            org_id=org_id,
+            owner_contact_id=owner.id,
+            owned_contact_id=owned.id,
+            link_type=link_type,
+            percentage=pct,
+            role_label=role,
+        ))
+        created += 1
+    print(f"  Ownership links: {created} (for Ownership Map)")
 
 
 # ─────────────────────────────────────────────────────────
@@ -850,7 +905,8 @@ def run():
         seed_comments_and_reactions(db, org_id, users, tasks)
         seed_attachments(db, org_id, users, tasks)
         seed_favorites(db, org_id, demo.id, projects)
-        seed_activities(db, org_id, users, projects)
+        seed_activities(db, org_id, users, projects, contacts)
+        seed_ownership_links(db, org_id, contacts)
 
         db.commit()
         print(f"\n=== Done! ===")

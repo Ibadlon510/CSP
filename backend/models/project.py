@@ -253,6 +253,7 @@ class ProjectDocumentChecklist(TimestampMixin, Base):
     org_id = Column(String, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
     requirement_name = Column(String(255), nullable=False)
     document_category = Column(String(100), nullable=True)
+    document_type = Column(String(20), nullable=False, default="required")  # "required" | "deliverable"
     document_id = Column(String, ForeignKey("documents.id", ondelete="SET NULL"), nullable=True)
     is_verified = Column(Boolean, nullable=False, default=False)
     sort_order = Column(Integer, nullable=False, default=0)
