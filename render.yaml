@@ -30,6 +30,8 @@ services:
         value: "https://csp-erp-frontend.onrender.com"
       - key: PYTHON_VERSION
         value: "3.11.7"
+      - key: PYTHONUNBUFFERED
+        value: "1"
 
   # ── Frontend (Next.js) ──
   - type: web
