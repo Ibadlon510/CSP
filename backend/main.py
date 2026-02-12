@@ -61,6 +61,22 @@ async def lifespan(app: FastAPI):
     """Create tables on startup (dev convenience; use Alembic in production)."""
     Base.metadata.create_all(bind=engine)
 
+    # Run idempotent migrations (add missing columns to existing tables)
+    try:
+        logger.info("Running idempotent migrations...")
+        import importlib, pathlib
+        _mig_dir = pathlib.Path(__file__).parent / "migrations"
+        for mig_file in sorted(_mig_dir.glob("*.py")):
+            if mig_file.name.startswith("_"):
+                continue
+            mod = importlib.import_module(f"migrations.{mig_file.stem}")
+            if hasattr(mod, "run"):
+                mod.run()
+        logger.info("Migrations completed.")
+    except Exception as e:
+        import traceback
+        logger.error("Migrations FAILED: %s\n%s", e, traceback.format_exc())
+
     # Auto-seed demo data only in debug/dev mode (idempotent — safe to re-run)
     from core.config import settings
     if settings.debug:
