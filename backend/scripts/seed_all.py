@@ -54,6 +54,22 @@ from constants.document_types import SYSTEM_DOCUMENT_CATEGORIES
 # Ensure tables exist
 Base.metadata.create_all(bind=engine)
 
+# Ensure document_type column exists (needed for PostgreSQL where create_all won't alter existing tables)
+from sqlalchemy import text as _text, inspect as _inspect
+_insp = _inspect(engine)
+if "product_document_requirements" in _insp.get_table_names():
+    _cols = [c["name"] for c in _insp.get_columns("product_document_requirements")]
+    if "document_type" not in _cols:
+        with engine.connect() as _conn:
+            _conn.execute(_text("ALTER TABLE product_document_requirements ADD COLUMN document_type VARCHAR(20) NOT NULL DEFAULT 'required'"))
+            _conn.commit()
+if "project_document_checklist" in _insp.get_table_names():
+    _cols = [c["name"] for c in _insp.get_columns("project_document_checklist")]
+    if "document_type" not in _cols:
+        with engine.connect() as _conn:
+            _conn.execute(_text("ALTER TABLE project_document_checklist ADD COLUMN document_type VARCHAR(20) NOT NULL DEFAULT 'required'"))
+            _conn.commit()
+
 DEMO_EMAIL = "demo@csp.local"
 DEMO_PASSWORD = "demo123"
 DEMO_ORG_NAME = "Demo CSP"
