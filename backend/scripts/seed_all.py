@@ -48,6 +48,7 @@ from models.wallet import (
 from models.document import Document, DocumentCategory, DocumentStatus
 from models.activity import Activity, ActivityType, ActivityStatus
 from models.compliance import OwnershipLink, OwnershipLinkType
+from models.product import ProductTaskTemplate, ProductDocumentRequirement
 from constants.document_types import SYSTEM_DOCUMENT_CATEGORIES
 
 # Ensure tables exist
@@ -214,27 +215,186 @@ def seed_contacts(db: Session, org_id: str, manager_id: str) -> list:
 # ─────────────────────────────────────────────────────────
 
 def seed_products(db: Session, org_id: str) -> list:
-    """Create sample products."""
+    """Create sample products with task templates and document requirements."""
     products = []
     items = [
-        ("Trade License Renewal", "Annual renewal of trade license", Decimal("3500.00")),
-        ("VAT Registration", "VAT registration with FTA", Decimal("2500.00")),
-        ("Company Formation", "New company setup package", Decimal("15000.00")),
-        ("Accounting Retainer", "Monthly accounting and bookkeeping", Decimal("3000.00")),
+        {
+            "name": "Trade License Renewal",
+            "code": "LR",
+            "description": "Annual renewal of trade license including compliance check, document updates, and authority submissions.",
+            "price": Decimal("3500.00"),
+            "creates_project": True,
+            "tasks": [
+                ("Audit current license status", ["Check expiry date", "Verify trade activities"]),
+                ("Renew tenancy contract", ["Contact landlord", "Negotiate terms", "Sign agreement"]),
+                ("Update MOA if needed", []),
+                ("Submit renewal application", ["Prepare form", "Attach documents", "Pay fees"]),
+                ("Collect renewed license", []),
+            ],
+            "docs_required": [
+                ("Current Trade License", "trade_license"),
+                ("Tenancy Contract", "contract"),
+                ("Passport Copies (all partners)", "passport"),
+                ("Emirates ID Copies", "other"),
+            ],
+            "docs_deliverable": [
+                ("Renewed Trade License", "trade_license"),
+                ("Updated Establishment Card", "other"),
+            ],
+        },
+        {
+            "name": "VAT Registration",
+            "code": "VAT",
+            "description": "Complete VAT registration with FTA including eligibility assessment, documentation, portal submission, and TRN certificate collection.",
+            "price": Decimal("2500.00"),
+            "creates_project": True,
+            "tasks": [
+                ("Collect financial statements", ["Request from client", "Review for completeness"]),
+                ("Review VAT threshold eligibility", []),
+                ("Prepare FTA registration form", ["Fill application", "Attach supporting docs"]),
+                ("Submit to FTA portal", []),
+                ("Follow up on approval", ["Check portal status", "Respond to queries"]),
+                ("Collect TRN certificate", []),
+            ],
+            "docs_required": [
+                ("Trade License", "trade_license"),
+                ("Financial Statements (12 months)", "other"),
+                ("Passport of Authorized Signatory", "passport"),
+                ("Bank Statement", "other"),
+            ],
+            "docs_deliverable": [
+                ("VAT Registration Certificate (TRN)", "other"),
+                ("FTA Portal Access Credentials", "other"),
+            ],
+        },
+        {
+            "name": "Company Formation",
+            "code": "CF",
+            "description": "Full company formation package including name reservation, MOA drafting, DED submission, trade license issuance, visa processing, and bank account setup.",
+            "price": Decimal("15000.00"),
+            "creates_project": True,
+            "tasks": [
+                ("Initial consultation & activity selection", []),
+                ("Name reservation with DED", ["Propose 3 names", "Submit reservation"]),
+                ("Draft Memorandum of Association", ["Define shareholding", "Legal review", "Client approval"]),
+                ("Submit to DED for approval", ["Prepare application", "Attach all documents"]),
+                ("Obtain initial approval letter", []),
+                ("Office lease agreement", ["Find office", "Negotiate lease", "Sign Ejari"]),
+                ("Pay government fees", ["Calculate fees", "Process payment"]),
+                ("Collect trade license", []),
+                ("Apply for investor/partner visas", ["Medical test", "Emirates ID", "Visa stamping"]),
+                ("Open corporate bank account", ["Prepare bank docs", "Schedule appointment", "Follow up"]),
+                ("Final compliance review", ["Verify all documents", "Handover to client"]),
+            ],
+            "docs_required": [
+                ("Passport Copies (all shareholders)", "passport"),
+                ("Visa Copies (if applicable)", "visa"),
+                ("Emirates ID Copies", "other"),
+                ("NOC from Sponsor (if employed)", "other"),
+                ("Proof of Address", "other"),
+                ("Business Plan", "other"),
+            ],
+            "docs_deliverable": [
+                ("Trade License", "trade_license"),
+                ("Memorandum of Association", "moa"),
+                ("Certificate of Incorporation", "other"),
+                ("Establishment Card", "other"),
+                ("Investor Visa", "visa"),
+                ("Emirates ID", "other"),
+            ],
+        },
+        {
+            "name": "Accounting Retainer",
+            "code": "AR",
+            "description": "Monthly accounting and bookkeeping services including transaction recording, bank reconciliation, financial reporting, and VAT return preparation.",
+            "price": Decimal("3000.00"),
+            "creates_project": False,
+            "tasks": [],
+            "docs_required": [
+                ("Bank Statements (monthly)", "other"),
+                ("Sales Invoices", "other"),
+                ("Purchase Invoices", "receipt"),
+                ("Petty Cash Records", "other"),
+            ],
+            "docs_deliverable": [
+                ("Monthly Financial Report", "other"),
+                ("VAT Return Filing Confirmation", "other"),
+            ],
+        },
     ]
-    for name, desc, price in items:
-        existing = db.query(Product).filter(Product.org_id == org_id, Product.name == name).first()
+
+    for item in items:
+        existing = db.query(Product).filter(Product.org_id == org_id, Product.name == item["name"]).first()
         if existing:
+            # Update code if missing
+            if not existing.code and item.get("code"):
+                existing.code = item["code"]
+            if not existing.creates_project and item.get("creates_project"):
+                existing.creates_project = item["creates_project"]
             products.append(existing)
+            # Seed task templates if missing
+            existing_templates = db.query(ProductTaskTemplate).filter(ProductTaskTemplate.product_id == existing.id).count()
+            if existing_templates == 0 and item.get("tasks"):
+                for sort_i, (task_name, subtasks) in enumerate(item["tasks"]):
+                    db.add(ProductTaskTemplate(
+                        org_id=org_id, product_id=existing.id, task_name=task_name,
+                        sort_order=sort_i, subtask_names=subtasks if subtasks else None,
+                    ))
+            # Seed doc requirements if missing
+            existing_docs = db.query(ProductDocumentRequirement).filter(ProductDocumentRequirement.product_id == existing.id).count()
+            if existing_docs == 0:
+                sort_i = 0
+                for doc_name, doc_cat in item.get("docs_required", []):
+                    db.add(ProductDocumentRequirement(
+                        org_id=org_id, product_id=existing.id, document_name=doc_name,
+                        document_category=doc_cat, document_type="required", sort_order=sort_i,
+                    ))
+                    sort_i += 1
+                for doc_name, doc_cat in item.get("docs_deliverable", []):
+                    db.add(ProductDocumentRequirement(
+                        org_id=org_id, product_id=existing.id, document_name=doc_name,
+                        document_category=doc_cat, document_type="deliverable", sort_order=sort_i,
+                    ))
+                    sort_i += 1
             continue
+
         p = Product(
-            org_id=org_id, name=name, description=desc,
-            default_unit_price=price, is_active=True, creates_project=False,
+            org_id=org_id, name=item["name"], description=item["description"],
+            default_unit_price=item["price"], is_active=True,
+            creates_project=item.get("creates_project", False),
+            code=item.get("code"),
         )
         db.add(p)
         db.flush()
+
+        # Task templates
+        for sort_i, (task_name, subtasks) in enumerate(item.get("tasks", [])):
+            db.add(ProductTaskTemplate(
+                org_id=org_id, product_id=p.id, task_name=task_name,
+                sort_order=sort_i, subtask_names=subtasks if subtasks else None,
+            ))
+
+        # Document requirements (required + deliverable)
+        sort_i = 0
+        for doc_name, doc_cat in item.get("docs_required", []):
+            db.add(ProductDocumentRequirement(
+                org_id=org_id, product_id=p.id, document_name=doc_name,
+                document_category=doc_cat, document_type="required", sort_order=sort_i,
+            ))
+            sort_i += 1
+        for doc_name, doc_cat in item.get("docs_deliverable", []):
+            db.add(ProductDocumentRequirement(
+                org_id=org_id, product_id=p.id, document_name=doc_name,
+                document_category=doc_cat, document_type="deliverable", sort_order=sort_i,
+            ))
+            sort_i += 1
+
         products.append(p)
-    print(f"  Products: {len(products)}")
+
+    db.flush()
+    total_templates = sum(len(item.get("tasks", [])) for item in items)
+    total_docs = sum(len(item.get("docs_required", [])) + len(item.get("docs_deliverable", [])) for item in items)
+    print(f"  Products: {len(products)} (with {total_templates} task templates, {total_docs} doc requirements)")
     return products
 
 
