@@ -11,6 +11,9 @@ import { PageViewToggle, SPREADSHEET_KANBAN_CARD_VIEWS } from "@/components/ui/P
 import { SpreadsheetView } from "@/components/ui/SpreadsheetView";
 import { KanbanView, type KanbanColumnConfig, type GenericCardData } from "@/components/ui/KanbanView";
 import { Pill } from "@/components/ui/Pill";
+import { SlideOverPanel } from "@/components/ui/SlideOverPanel";
+import { FormField } from "@/components/ui/FormField";
+import { useToast } from "@/components/Toast";
 
 interface ProductTaskTemplate {
   id: string;
@@ -55,6 +58,10 @@ export default function ProductsPage() {
   const [filters, setFilters] = useState<Record<string, string[]>>({ is_active: [], creates_project: [] });
   const [groupBy, setGroupBy] = useState("");
   const [viewMode, setViewMode] = useState("spreadsheet");
+  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
+  const [quickForm, setQuickForm] = useState({ name: "", code: "", description: "", default_unit_price: "", creates_project: false });
+  const [quickSaving, setQuickSaving] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     load();
@@ -69,6 +76,35 @@ export default function ProductsPage() {
       setProducts([]);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleQuickCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setQuickSaving(true);
+    try {
+      const payload: Record<string, unknown> = {
+        name: quickForm.name.trim(),
+        code: quickForm.code.trim() || null,
+        description: quickForm.description.trim() || null,
+        default_unit_price: quickForm.default_unit_price ? parseFloat(quickForm.default_unit_price) : null,
+        is_active: true,
+        creates_project: quickForm.creates_project,
+        task_templates: [],
+      };
+      const res = await api.post("/api/products", payload) as { id: string };
+      toast.success("Product created");
+      setQuickForm({ name: "", code: "", description: "", default_unit_price: "", creates_project: false });
+      setQuickCreateOpen(false);
+      if (res?.id) {
+        router.push(`/dashboard/products/${res.id}`);
+      } else {
+        load();
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to create product");
+    } finally {
+      setQuickSaving(false);
     }
   }
 
@@ -111,10 +147,10 @@ export default function ProductsPage() {
           <p className="page-subtitle">Manage products and services, task templates, and document requirements.</p>
         </div>
         <div className="page-header-actions">
-          <Link href="/dashboard/products/new" className="btn-primary">
+          <button type="button" className="btn-primary" onClick={() => setQuickCreateOpen(true)}>
             <Icon path="M12 4v16m8-8H4" size={16} />
             New Product
-          </Link>
+          </button>
         </div>
       </div>
 
@@ -231,6 +267,38 @@ export default function ProductsPage() {
           </div>
         )
       )}
+
+      {/* Quick-create Product SlidePanel */}
+      <SlideOverPanel open={quickCreateOpen} onClose={() => setQuickCreateOpen(false)} title="New Product" subtitle="Create a new product or service">
+        <form onSubmit={handleQuickCreate} style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+          <div style={{ flex: 1, padding: "16px 0", display: "flex", flexDirection: "column", gap: 14 }}>
+            <FormField label="Name" required>
+              <input type="text" value={quickForm.name} onChange={(e) => setQuickForm({ ...quickForm, name: e.target.value })} required placeholder="Product or service name" style={{ margin: 0 }} />
+            </FormField>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <FormField label="Code">
+                <input type="text" value={quickForm.code} onChange={(e) => setQuickForm({ ...quickForm, code: e.target.value })} placeholder="e.g. CF, LR" style={{ margin: 0 }} />
+              </FormField>
+              <FormField label="Default Price">
+                <input type="number" step="0.01" min="0" value={quickForm.default_unit_price} onChange={(e) => setQuickForm({ ...quickForm, default_unit_price: e.target.value })} placeholder="0.00" style={{ margin: 0 }} />
+              </FormField>
+            </div>
+            <FormField label="Description">
+              <textarea value={quickForm.description} onChange={(e) => setQuickForm({ ...quickForm, description: e.target.value })} placeholder="Brief description..." rows={3} style={{ margin: 0, resize: "vertical" }} />
+            </FormField>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>
+              <input type="checkbox" checked={quickForm.creates_project} onChange={(e) => setQuickForm({ ...quickForm, creates_project: e.target.checked })} style={{ width: 16, height: 16 }} />
+              Creates project on order confirmation
+            </label>
+          </div>
+          <div style={{ display: "flex", gap: 10, paddingTop: 16, borderTop: "1px solid var(--border-primary)" }}>
+            <button type="submit" className="btn-primary" style={{ flex: 1 }} disabled={quickSaving || !quickForm.name.trim()}>
+              {quickSaving ? "Creating..." : "Create Product"}
+            </button>
+            <button type="button" className="btn-ghost" onClick={() => setQuickCreateOpen(false)}>Cancel</button>
+          </div>
+        </form>
+      </SlideOverPanel>
 
       {/* Results count */}
       {!loading && filtered.length > 0 && (
