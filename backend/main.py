@@ -61,22 +61,14 @@ async def lifespan(app: FastAPI):
     """Create tables on startup (dev convenience; use Alembic in production)."""
     Base.metadata.create_all(bind=engine)
 
-    # Auto-seed demo data only in debug/dev mode
+    # Auto-seed demo data only in debug/dev mode (idempotent — safe to re-run)
     from core.config import settings
     if settings.debug:
         try:
-            from core.database import SessionLocal
-            from models.user import User
-            db = SessionLocal()
-            demo_user = db.query(User).filter(User.email == "demo@csp.local").first()
-            db.close()
-            if not demo_user:
-                logger.info("Seeding demo data...")
-                from scripts.seed_demo import run as seed_demo
-                seed_demo()
-                logger.info("Demo seed completed successfully.")
-            else:
-                logger.info("Demo user already exists, skipping seed.")
+            logger.info("DEBUG=true — running demo seed (idempotent)...")
+            from scripts.seed_demo import run as seed_demo
+            seed_demo()
+            logger.info("Demo seed completed successfully.")
         except Exception as e:
             import traceback
             logger.error("Demo seed FAILED: %s\n%s", e, traceback.format_exc())
