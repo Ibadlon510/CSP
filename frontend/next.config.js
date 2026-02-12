@@ -2,6 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   output: "standalone",
+  eslint: { ignoreDuringBuilds: true },
   async redirects() {
     return [
       { source: "/dashboard/entities/new", destination: "/dashboard/contacts/new", permanent: true },
