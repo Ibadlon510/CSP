@@ -1,0 +1,46 @@
+# Dependencies
+frontend/node_modules/
+backend/venv/
+
+# Build output
+frontend/.next/
+
+# Database files
+backend/*.db
+backend/*.db-shm
+backend/*.db-wal
+
+# Environment files
+.env
+backend/.env
+frontend/.env.local
+
+# Git
+.git/
+.gitignore
+
+# IDE / Editor
+.cursor/
+.windsurf/
+.vscode/
+.idea/
+.run/
+
+# Documentation (not needed in Docker image)
+*.md
+docs/
+
+# Scripts not needed in containers
+scripts/
+start
+stop
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Uploads (dev data)
+backend/uploads/
+
+# Test artifacts
+TEST_FRONTEND.html

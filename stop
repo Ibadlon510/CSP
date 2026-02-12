@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Stop UAE CSP-ERP (backend + frontend)
+cd "$(cd "$(dirname "$0")" && pwd)"
+
+if [ -t 1 ]; then
+  G='\033[0;32m' Y='\033[0;33m' C='\033[0;36m' BOLD='\033[1m' RST='\033[0m'
+else
+  G='' Y='' C='' BOLD='' RST=''
+fi
+
+STOPPED=0
+
+kill_pid() {
+  local file=$1 name=$2
+  if [ -f "$file" ]; then
+    local pid
+    pid=$(cat "$file" 2>/dev/null)
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null || true
+      printf "  ${G}✔${RST} Stopped %s (PID %s)\n" "$name" "$pid"
+      STOPPED=$((STOPPED + 1))
+    fi
+    rm -f "$file"
+  fi
+}
+
+# Kill by saved PIDs
+kill_pid .run/backend.pid "backend"
+kill_pid .run/frontend.pid "frontend"
+
+# Fallback: kill by port (in case PIDs were lost)
+for port in 8000 3000; do
+  pid=$(lsof -ti:"$port" 2>/dev/null || true)
+  if [ -n "$pid" ]; then
+    kill $pid 2>/dev/null || true
+    printf "  ${G}✔${RST} Stopped process on port %s (PID %s)\n" "$port" "$pid"
+    STOPPED=$((STOPPED + 1))
+  fi
+done
+
+if [ $STOPPED -eq 0 ]; then
+  printf "  ${C}ℹ${RST} Nothing was running.\n"
+else
+  printf "  ${BOLD}Done.${RST} Stopped %d process(es).\n" "$STOPPED"
+fi

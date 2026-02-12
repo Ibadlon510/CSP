@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UAE CSP-ERP - Test Frontend</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f8fafc;
+      padding: 40px 20px;
+    }
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 { color: #1e293b; margin-bottom: 8px; }
+    p { color: #64748b; margin-bottom: 24px; }
+    .card {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      margin-right: 10px;
+    }
+    button:hover { background: #2563eb; }
+    input {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+    pre {
+      background: #f1f5f9;
+      padding: 16px;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .success { color: #22c55e; font-weight: 500; }
+    .error { color: #ef4444; font-weight: 500; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>UAE CSP-ERP - Backend Test</h1>
+    <p>Sprint 1 MVP: Test the backend API directly</p>
+
+    <div class="card">
+      <h2 style="margin-bottom: 16px; font-size: 18px;">1. Register User</h2>
+      <input id="regEmail" placeholder="Email" value="test@example.com">
+      <input id="regPassword" type="password" placeholder="Password" value="password123">
+      <input id="regName" placeholder="Full Name" value="John Doe">
+      <input id="regOrg" placeholder="Organization Name" value="Test CSP Company">
+      <button onclick="register()">Register</button>
+      <p id="regResult" style="margin-top: 12px;"></p>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-bottom: 16px; font-size: 18px;">2. Login</h2>
+      <input id="loginEmail" placeholder="Email" value="test@example.com">
+      <input id="loginPassword" type="password" placeholder="Password" value="password123">
+      <button onclick="login()">Login</button>
+      <p id="loginResult" style="margin-top: 12px;"></p>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-bottom: 16px; font-size: 18px;">3. Get Current User</h2>
+      <button onclick="getMe()">Get My Info</button>
+      <p id="meResult" style="margin-top: 12px;"></p>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-bottom: 16px; font-size: 18px;">4. List Users (Admin Only)</h2>
+      <button onclick="listUsers()">List Users</button>
+      <p id="usersResult" style="margin-top: 12px;"></p>
+    </div>
+  </div>
+
+  <script>
+    const API = 'http://localhost:8000';
+    let token = localStorage.getItem('token');
+
+    async function register() {
+      const result = document.getElementById('regResult');
+      try {
+        const res = await fetch(`${API}/api/auth/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: document.getElementById('regEmail').value,
+            password: document.getElementById('regPassword').value,
+            full_name: document.getElementById('regName').value,
+            org_name: document.getElementById('regOrg').value,
+          })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          token = data.access_token;
+          localStorage.setItem('token', token);
+          result.innerHTML = `<span class="success">✓ Registered!</span><pre>${JSON.stringify(data, null, 2)}</pre>`;
+        } else {
+          result.innerHTML = `<span class="error">Error:</span><pre>${JSON.stringify(data, null, 2)}</pre>`;
+        }
+      } catch (e) {
+        result.innerHTML = `<span class="error">Error: ${e.message}</span>`;
+      }
+    }
+
+    async function login() {
+      const result = document.getElementById('loginResult');
+      try {
+        const res = await fetch(`${API}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: document.getElementById('loginEmail').value,
+            password: document.getElementById('loginPassword').value,
+          })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          token = data.access_token;
+          localStorage.setItem('token', token);
+          result.innerHTML = `<span class="success">✓ Logged in!</span><pre>${JSON.stringify(data, null, 2)}</pre>`;
+        } else {
+          result.innerHTML = `<span class="error">Error:</span><pre>${JSON.stringify(data, null, 2)}</pre>`;
+        }
+      } catch (e) {
+        result.innerHTML = `<span class="error">Error: ${e.message}</span>`;
+      }
+    }
+
+    async function getMe() {
+      const result = document.getElementById('meResult');
+      if (!token) {
+        result.innerHTML = '<span class="error">No token. Register or login first.</span>';
+        return;
+      }
+      try {
+        const res = await fetch(`${API}/api/auth/me`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (res.ok) {
+          result.innerHTML = `<span class="success">✓ User info:</span><pre>${JSON.stringify(data, null, 2)}</pre>`;
+        } else {
+          result.innerHTML = `<span class="error">Error:</span><pre>${JSON.stringify(data, null, 2)}</pre>`;
+        }
+      } catch (e) {
+        result.innerHTML = `<span class="error">Error: ${e.message}</span>`;
+      }
+    }
+
+    async function listUsers() {
+      const result = document.getElementById('usersResult');
+      if (!token) {
+        result.innerHTML = '<span class="error">No token. Register or login first.</span>';
+        return;
+      }
+      try {
+        const res = await fetch(`${API}/api/users/`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (res.ok) {
+          result.innerHTML = `<span class="success">✓ Users:</span><pre>${JSON.stringify(data, null, 2)}</pre>`;
+        } else {
+          result.innerHTML = `<span class="error">Error:</span><pre>${JSON.stringify(data, null, 2)}</pre>`;
+        }
+      } catch (e) {
+        result.innerHTML = `<span class="error">Error: ${e.message}</span>`;
+      }
+    }
+  </script>
+</body>
+</html>

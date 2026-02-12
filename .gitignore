@@ -1,0 +1,30 @@
+# Run scripts
+.run/
+
+# Environment files
+.env
+backend/.env
+frontend/.env.local
+
+# Backend
+backend/venv/
+backend/uploads/
+backend/__pycache__/
+backend/*.db
+backend/*.db.bak
+backend/*.db-shm
+backend/*.db-wal
+*.pyc
+
+# Frontend
+frontend/node_modules/
+frontend/node_modules.old*/
+frontend/.next/
+frontend/tsconfig.tsbuildinfo
+
+# IDE / OS
+.idea/
+.vscode/
+.cursor/
+.DS_Store
+Thumbs.db

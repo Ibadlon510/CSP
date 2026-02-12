@@ -1,0 +1,246 @@
+#!/usr/bin/env bash
+# ──────────────────────────────────────────────────────────────
+# Start UAE CSP-ERP  (backend + frontend)
+# Usage:  ./start              — normal start
+#         ./start --logs       — start then tail logs
+#         ./start --clean      — wipe caches and start fresh
+# Stop:   ./stop
+# Idempotent: re-running ./start kills existing processes first.
+# ──────────────────────────────────────────────────────────────
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT_DIR"
+mkdir -p .run
+
+# ── Parse flags ──────────────────────────────────────────────
+TAIL_LOGS=false
+CLEAN=false
+for arg in "$@"; do
+  case "$arg" in
+    --logs)  TAIL_LOGS=true ;;
+    --clean) CLEAN=true ;;
+  esac
+done
+
+# ── Colors (disabled when piped) ─────────────────────────────
+if [ -t 1 ]; then
+  R='\033[0;31m' G='\033[0;32m' Y='\033[0;33m' B='\033[0;34m'
+  C='\033[0;36m' BOLD='\033[1m' RST='\033[0m'
+else
+  R='' G='' Y='' B='' C='' BOLD='' RST=''
+fi
+ok()   { printf "  ${G}✔${RST} %s\n" "$*"; }
+fail() { printf "  ${R}✘${RST} %s\n" "$*"; }
+warn() { printf "  ${Y}⚠${RST} %s\n" "$*"; }
+info() { printf "  ${C}ℹ${RST} %s\n" "$*"; }
+hdr()  { printf "\n${BOLD}═══ %s ═══${RST}\n" "$*"; }
+
+# ── Auto-stop: free ports so start always succeeds ───────────
+kill_by_pid_file() {
+  local file=$1 name=$2
+  if [ -f "$file" ]; then
+    local pid
+    pid=$(cat "$file" 2>/dev/null)
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null || true
+      info "Stopped previous $name (PID $pid)"
+    fi
+    rm -f "$file"
+  fi
+}
+kill_by_pid_file .run/backend.pid "backend"
+kill_by_pid_file .run/frontend.pid "frontend"
+if command -v lsof >/dev/null 2>&1; then
+  for port in 8000 3000; do
+    pid=$(lsof -ti:"$port" 2>/dev/null || true)
+    if [ -n "$pid" ]; then
+      kill $pid 2>/dev/null || true
+      info "Freed port $port (was in use)"
+    fi
+  done
+fi
+sleep 1
+
+# ── Optional deep clean ─────────────────────────────────────
+if $CLEAN; then
+  hdr "Clean"
+  rm -rf frontend/.next frontend/node_modules/.cache backend/__pycache__
+  info "Removed .next cache, node_modules/.cache, __pycache__"
+fi
+
+# ── Pre-flight checks ───────────────────────────────────────
+hdr "Pre-flight"
+FAIL=0
+
+PYTHON=python
+command -v python3 >/dev/null 2>&1 && PYTHON=python3
+if ! command -v $PYTHON >/dev/null 2>&1; then
+  fail "Python not found. Install Python 3.8+."; FAIL=1
+else
+  ok "Python: $($PYTHON --version 2>&1)"
+fi
+
+if ! command -v node >/dev/null 2>&1; then
+  fail "Node.js not found. Install Node.js 18+."; FAIL=1
+else
+  ok "Node.js: $(node --version)"
+fi
+
+if ! command -v curl >/dev/null 2>&1; then
+  warn "curl not found — health checks will be skipped."
+fi
+
+[ $FAIL -eq 1 ] && fail "Fix errors above and try again." && exit 1
+
+# ── Backend ──────────────────────────────────────────────────
+hdr "Backend"
+
+if [ ! -d backend/venv ]; then
+  info "Creating virtualenv..."
+  $PYTHON -m venv backend/venv
+fi
+
+if ! backend/venv/bin/python -c "import fastapi, uvicorn, jose, bcrypt" 2>/dev/null; then
+  info "Installing backend dependencies..."
+  PIP_OK=0
+  for attempt in 1 2; do
+    if PIP_DEFAULT_TIMEOUT=600 backend/venv/bin/pip install -q -r backend/requirements.txt 2>&1; then
+      PIP_OK=1; break
+    fi
+    [ $attempt -eq 1 ] && warn "Retrying pip install..."
+  done
+  if [ $PIP_OK -eq 0 ]; then
+    fail "pip install failed. Run manually:"
+    echo "    cd backend && ./venv/bin/pip install --timeout 600 -r requirements.txt"
+    exit 1
+  fi
+fi
+
+if [ -f backend/csp_erp.db ]; then
+  ok "Database file exists"
+else
+  info "Database will be created on first run"
+fi
+
+info "Starting backend → http://localhost:8000"
+echo "--- Started $(date) ---" > .run/backend.log
+(
+  cd backend
+  exec ./venv/bin/python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+) >> .run/backend.log 2>&1 &
+BACKEND_PID=$!
+echo $BACKEND_PID > .run/backend.pid
+
+info "Waiting for backend (up to 30s)..."
+BACKEND_OK=0
+for i in $(seq 1 30); do
+  # Bail early if process died
+  if ! kill -0 $BACKEND_PID 2>/dev/null; then
+    fail "Backend process exited unexpectedly. Log tail:"
+    tail -20 .run/backend.log | sed 's/^/    /'
+    exit 1
+  fi
+  if curl -sf http://localhost:8000/health >/dev/null 2>&1; then
+    BACKEND_OK=1; break
+  fi
+  sleep 1
+done
+if [ $BACKEND_OK -eq 1 ]; then
+  ok "Backend API ready"
+else
+  fail "Backend did not respond after 30s. Log tail:"
+  tail -20 .run/backend.log | sed 's/^/    /'
+  exit 1
+fi
+
+# Database check (informational)
+if command -v curl >/dev/null 2>&1; then
+  DETAIL=$(curl -sf http://localhost:8000/health/detailed 2>/dev/null || true)
+  if echo "$DETAIL" | grep -q '"database".*"ok"'; then
+    ok "Database: connected"
+  else
+    warn "Database check inconclusive (app may still work)"
+  fi
+fi
+
+# ── Frontend ─────────────────────────────────────────────────
+hdr "Frontend"
+
+# Clean corrupted .next cache (files with spaces, stale state)
+if [ -d frontend/.next ]; then
+  BAD_FILES=$(find frontend/.next -name "* *" 2>/dev/null | head -1)
+  if [ -n "$BAD_FILES" ]; then
+    warn "Corrupted .next cache detected — removing"
+    rm -rf frontend/.next
+  fi
+fi
+
+if [ ! -d frontend/node_modules ] || [ ! -f frontend/node_modules/.bin/next ]; then
+  info "Installing frontend dependencies..."
+  NPM_OK=0
+  for attempt in 1 2; do
+    if npm install --no-audit --no-fund --prefer-offline 2>&1 \
+       | tee .run/npm_install.log \
+       | tail -5; then
+      NPM_OK=1; break
+    fi
+    [ $attempt -eq 1 ] && warn "Retrying npm install..."
+  done
+  if [ $NPM_OK -eq 0 ]; then
+    fail "npm install failed. See .run/npm_install.log"
+    exit 1
+  fi
+fi
+
+info "Starting frontend → http://localhost:3000"
+echo "--- Started $(date) ---" > .run/frontend.log
+(
+  cd frontend
+  exec npx next dev --port 3000
+) >> .run/frontend.log 2>&1 &
+FRONTEND_PID=$!
+echo $FRONTEND_PID > .run/frontend.pid
+
+info "Waiting for frontend (up to 90s on first compile)..."
+FRONTEND_OK=0
+for i in $(seq 1 90); do
+  # Bail early if process died
+  if ! kill -0 $FRONTEND_PID 2>/dev/null; then
+    fail "Frontend process exited unexpectedly. Log tail:"
+    tail -20 .run/frontend.log | sed 's/^/    /'
+    exit 1
+  fi
+  CODE=$(curl -sf -o /dev/null -w "%{http_code}" http://localhost:3000 2>/dev/null || echo "000")
+  if [ "$CODE" = "200" ] || [ "$CODE" = "304" ]; then
+    FRONTEND_OK=1; break
+  fi
+  # Show a dot every 10s so user knows it's not stuck
+  if [ $((i % 10)) -eq 0 ]; then
+    printf "  ${C}…${RST} still waiting (%ds)\n" "$i"
+  fi
+  sleep 1
+done
+if [ $FRONTEND_OK -eq 1 ]; then
+  ok "Frontend ready"
+else
+  warn "Frontend not responding after 90s (may still be compiling)"
+  info "Try: open http://localhost:3000 or check .run/frontend.log"
+fi
+
+# ── Summary ──────────────────────────────────────────────────
+hdr "Ready"
+printf "  ${BOLD}Backend${RST}   http://localhost:8000  (docs: http://localhost:8000/docs)\n"
+if [ $FRONTEND_OK -eq 1 ]; then
+  printf "  ${BOLD}Frontend${RST}  http://localhost:3000\n"
+else
+  printf "  ${BOLD}Frontend${RST}  http://localhost:3000  ${Y}(starting…)${RST}\n"
+fi
+printf "  ${BOLD}Logs${RST}      .run/backend.log  .run/frontend.log\n"
+printf "  ${BOLD}Stop${RST}      ./stop\n"
+echo ""
+
+# ── Optional: tail logs ──────────────────────────────────────
+if $TAIL_LOGS; then
+  info "Tailing logs (Ctrl+C to stop watching — servers keep running)"
+  echo ""
+  tail -f .run/backend.log .run/frontend.log
+fi
