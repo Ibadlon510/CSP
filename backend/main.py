@@ -71,10 +71,15 @@ async def lifespan(app: FastAPI):
             demo_user = db.query(User).filter(User.email == "demo@csp.local").first()
             db.close()
             if not demo_user:
+                logger.info("Seeding demo data...")
                 from scripts.seed_demo import run as seed_demo
                 seed_demo()
+                logger.info("Demo seed completed successfully.")
+            else:
+                logger.info("Demo user already exists, skipping seed.")
         except Exception as e:
-            logger.warning("Demo seed skipped/failed: %s", e)
+            import traceback
+            logger.error("Demo seed FAILED: %s\n%s", e, traceback.format_exc())
 
     # Start background scheduler (expiry alerts, retention checks)
     from tasks.scheduler import start_scheduler, stop_scheduler
