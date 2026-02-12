@@ -65,9 +65,9 @@ async def lifespan(app: FastAPI):
     from core.config import settings
     if settings.debug:
         try:
-            logger.info("DEBUG=true — running demo seed (idempotent)...")
-            from scripts.seed_demo import run as seed_demo
-            seed_demo()
+            logger.info("DEBUG=true — running consolidated seed (idempotent)...")
+            from scripts.seed_all import run as seed_all
+            seed_all()
             logger.info("Demo seed completed successfully.")
         except Exception as e:
             import traceback
