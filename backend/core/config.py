@@ -10,10 +10,10 @@ class Settings:
     debug: bool = os.getenv("DEBUG", "false").lower() == "true"
 
     # Use SQLite for easy local dev — switch to PostgreSQL in production
-    database_url: str = os.getenv(
-        "DATABASE_URL",
-        "sqlite:///./csp_erp.db",
-    )
+    # Render.com provides DATABASE_URL with postgres:// prefix; SQLAlchemy 2.0+ requires postgresql://
+    database_url: str = os.getenv("DATABASE_URL", "sqlite:///./csp_erp.db")
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
 
     jwt_secret: str = os.getenv("JWT_SECRET", "dev-secret-change-in-production-min-32-chars!")
     jwt_algorithm: str = "HS256"
@@ -25,3 +25,13 @@ class Settings:
 
 
 settings = Settings()
+
+# Fail fast: warn if using default JWT secret in production
+_DEFAULT_JWT = "dev-secret-change-in-production-min-32-chars!"
+if not settings.debug and settings.jwt_secret == _DEFAULT_JWT:
+    import warnings
+    warnings.warn(
+        "⚠️  SECURITY: JWT_SECRET is using the default dev value! "
+        "Set a unique JWT_SECRET environment variable before deploying to production.",
+        stacklevel=1,
+    )

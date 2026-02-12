@@ -57,7 +57,34 @@
    docker-compose down
    ```
 
-### Option 2: Manual Deployment
+### Option 2: Render.com (One-Click Blueprint)
+
+A `render.yaml` Blueprint is included. This defines all services (backend, frontend, PostgreSQL) for automated deployment.
+
+1. **Push code to GitHub/GitLab**
+
+2. **Deploy via Blueprint:**
+   - Go to [Render Dashboard](https://dashboard.render.com/) → **New** → **Blueprint**
+   - Connect your repository
+   - Render reads `render.yaml` and creates all 3 services automatically
+   - `JWT_SECRET` is auto-generated; `DATABASE_URL` is auto-linked from the managed PostgreSQL
+
+3. **Update service URLs after first deploy:**
+   - Once deployed, copy the actual Render URLs (e.g. `https://csp-erp-api-xxxx.onrender.com`)
+   - Update `CORS_ORIGINS` on the backend service → your frontend URL
+   - Update `NEXT_PUBLIC_API_URL` on the frontend service → your backend URL
+   - **Trigger a manual redeploy of the frontend** (NEXT_PUBLIC is inlined at build time)
+
+4. **Verify:**
+   - Backend health: `https://your-backend.onrender.com/health`
+   - Frontend: `https://your-frontend.onrender.com`
+   - API docs: `https://your-backend.onrender.com/docs`
+
+> **Note:** Render free tier spins down after 15 min of inactivity. First request after sleep takes ~30s. Upgrade to a paid plan for always-on.
+
+> **File uploads:** Render has an ephemeral filesystem — uploaded files are lost on redeploy. For persistent storage, configure Cloudflare R2 or AWS S3 (see R2_BUCKET / R2_ENDPOINT env vars).
+
+### Option 3: Manual Deployment
 
 #### Backend (FastAPI)
 
@@ -167,12 +194,24 @@ alembic upgrade head
 
 | Variable | Description | Required | Default |
 |----------|-------------|----------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | Yes (prod) | `sqlite:///./csp_erp.db` |
-| `JWT_SECRET` | Secret key for JWT tokens | Yes | - |
+| `DATABASE_URL` | PostgreSQL connection string | **Yes (prod)** | `sqlite:///./csp_erp.db` |
+| `JWT_SECRET` | Secret key for JWT tokens (32+ chars) | **Yes** | dev default ⚠️ |
+| `JWT_ALGORITHM` | JWT signing algorithm | No | `HS256` |
 | `JWT_EXPIRE_MINUTES` | JWT token expiration | No | `1440` (24h) |
-| `DEBUG` | Enable debug mode | No | `false` |
-| `CORS_ORIGINS` | Allowed CORS origins | No | `http://localhost:3000` |
-| `NEXT_PUBLIC_API_URL` | Backend API URL | Yes | `http://localhost:8000` |
+| `DEBUG` | Enable debug mode (enables demo seed + verbose logs) | No | `false` |
+| `CORS_ORIGINS` | Comma-separated allowed CORS origins | **Yes (prod)** | `http://localhost:3000` |
+| `NEXT_PUBLIC_API_URL` | Backend API URL (inlined at frontend build time) | **Yes** | `http://localhost:8000` |
+| `DB_USER` | PostgreSQL user (docker-compose) | No | `csp_user` |
+| `DB_PASSWORD` | PostgreSQL password (docker-compose) | **Yes (prod)** | `csp_password` |
+| `DB_NAME` | PostgreSQL database name | No | `csp_erp_db` |
+| `DB_PORT` | PostgreSQL port | No | `5432` |
+| `BACKEND_PORT` | Backend exposed port | No | `8000` |
+| `FRONTEND_PORT` | Frontend exposed port | No | `3000` |
+| `REDIS_URL` | Redis URL (future use) | No | `redis://localhost:6379/0` |
+| `R2_BUCKET` | Cloudflare R2 bucket (future use) | No | - |
+| `R2_ENDPOINT` | Cloudflare R2 endpoint (future use) | No | - |
+
+> **⚠️ Critical for production:** `JWT_SECRET`, `DB_PASSWORD`, `CORS_ORIGINS`, and `NEXT_PUBLIC_API_URL` must be set. The app will emit a startup warning if `JWT_SECRET` uses the default dev value.
 
 ---
 
@@ -187,8 +226,8 @@ alembic upgrade head
 - [ ] Set up database backups
 - [ ] Enable firewall rules
 - [ ] Use strong database passwords
-- [ ] Implement rate limiting (future sprint)
-- [ ] Set up monitoring and logging
+- [x] Implement rate limiting (auth endpoints: 10 req/min/IP)
+- [x] Set up structured logging (JSON in prod, readable in dev)
 
 ---
 

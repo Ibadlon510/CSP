@@ -2,12 +2,32 @@
 UAE CSP-ERP API — FastAPI entrypoint.
 Run: uvicorn main:app --reload
 """
+import logging
+import sys
 from contextlib import asynccontextmanager
 
 import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from core.config import settings as _cfg
+
+# ── Structured logging ──
+_log_level = logging.DEBUG if _cfg.debug else logging.INFO
+_log_format = (
+    "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+    if _cfg.debug
+    else '{"ts":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s","msg":"%(message)s"}'
+)
+logging.basicConfig(
+    level=_log_level,
+    format=_log_format,
+    datefmt="%Y-%m-%dT%H:%M:%S",
+    stream=sys.stdout,
+    force=True,
+)
+logger = logging.getLogger("csp-erp")
 
 from core.database import engine, Base
 
@@ -33,6 +53,7 @@ from api.approvals import router as approvals_router
 from api.activities import router as activities_router
 from api.commission_attributes import router as commission_attributes_router
 from api.saved_searches import router as saved_searches_router
+from api.audit_logs import router as audit_logs_router
 
 
 @asynccontextmanager
@@ -40,18 +61,20 @@ async def lifespan(app: FastAPI):
     """Create tables on startup (dev convenience; use Alembic in production)."""
     Base.metadata.create_all(bind=engine)
 
-    # Auto-seed demo data if demo user doesn't exist yet
-    try:
-        from core.database import SessionLocal
-        from models.user import User
-        db = SessionLocal()
-        demo_user = db.query(User).filter(User.email == "demo@csp.local").first()
-        db.close()
-        if not demo_user:
-            from scripts.seed_demo import run as seed_demo
-            seed_demo()
-    except Exception as e:
-        print(f"[startup] Demo seed skipped/failed: {e}")
+    # Auto-seed demo data only in debug/dev mode
+    from core.config import settings
+    if settings.debug:
+        try:
+            from core.database import SessionLocal
+            from models.user import User
+            db = SessionLocal()
+            demo_user = db.query(User).filter(User.email == "demo@csp.local").first()
+            db.close()
+            if not demo_user:
+                from scripts.seed_demo import run as seed_demo
+                seed_demo()
+        except Exception as e:
+            logger.warning("Demo seed skipped/failed: %s", e)
 
     # Start background scheduler (expiry alerts, retention checks)
     from tasks.scheduler import start_scheduler, stop_scheduler
@@ -99,6 +122,7 @@ app.include_router(approvals_router)
 app.include_router(activities_router)
 app.include_router(commission_attributes_router)
 app.include_router(saved_searches_router)
+app.include_router(audit_logs_router)
 
 
 @app.get("/health")

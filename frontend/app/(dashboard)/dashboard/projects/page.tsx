@@ -12,6 +12,7 @@ import { SpreadsheetView } from "@/components/ui/SpreadsheetView";
 import { KanbanView, type KanbanColumnConfig, type GenericCardData } from "@/components/ui/KanbanView";
 import { TimelineView } from "@/components/ui/TimelineView";
 import { Pill } from "@/components/ui/Pill";
+import { exportToCsv } from "@/lib/export";
 
 type Project = {
   id: string;
@@ -138,7 +139,13 @@ export default function ProjectsPage() {
           <p className="page-subtitle">Manage client projects and tasks</p>
         </div>
         <div className="page-header-actions">
-          <button className="btn-secondary btn-sm">
+          <button className="btn-secondary btn-sm" onClick={() => exportToCsv("projects", filteredProjects, [
+            { key: "project_number", label: "Number" },
+            { key: "title", label: "Title" },
+            { key: "contact_name", label: "Contact" },
+            { key: "status", label: "Status" },
+            { key: "due_date", label: "Due Date" },
+          ])}>
             <Icon path="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M17 8l-5-5-5 5 M12 3v12" size={16} />
             Export
           </button>

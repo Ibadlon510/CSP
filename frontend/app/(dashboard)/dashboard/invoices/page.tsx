@@ -12,6 +12,7 @@ import { SpreadsheetView } from "@/components/ui/SpreadsheetView";
 import { KanbanView, type KanbanColumnConfig, type GenericCardData } from "@/components/ui/KanbanView";
 import { TimelineView } from "@/components/ui/TimelineView";
 import { Pill } from "@/components/ui/Pill";
+import { exportToCsv } from "@/lib/export";
 
 interface Invoice {
   id: string;
@@ -140,7 +141,14 @@ export default function InvoicesPage() {
           <p className="page-subtitle">Invoices and payments linked to wallet</p>
         </div>
         <div className="page-header-actions">
-          <button className="btn-secondary btn-sm">
+          <button className="btn-secondary btn-sm" onClick={() => exportToCsv("invoices", filteredInvoices, [
+            { key: "invoice_number", label: "Number" },
+            { key: "contact_name", label: "Contact" },
+            { key: "status", label: "Status" },
+            { key: "total", label: "Total" },
+            { key: "due_date", label: "Due Date" },
+            { key: "created_at", label: "Created" },
+          ])}>
             <Icon path="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M17 8l-5-5-5 5 M12 3v12" size={16} />
             Export
           </button>

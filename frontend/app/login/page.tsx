@@ -4,16 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { login, register } from "@/lib/auth";
 import { useToast } from "@/components/Toast";
+import { Icon } from "@/components/ui/Icon";
 
 const DEMO_EMAIL = "demo@csp.local";
 const DEMO_PASSWORD = "demo123";
-
-// Icon component
-const Icon = ({ path, size = 20 }: { path: string; size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d={path} />
-  </svg>
-);
 
 export default function LoginPage() {
   const router = useRouter();
@@ -169,7 +163,7 @@ export default function LoginPage() {
             />
           </div>
 
-          <div style={{ marginBottom: 24 }}>
+          <div style={{ marginBottom: 16 }}>
             <label htmlFor="password">
               Password
             </label>
@@ -181,6 +175,11 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
             />
+          </div>
+          <div style={{ marginBottom: 24, textAlign: "right" }}>
+            <a href="/forgot-password" style={{ fontSize: 13, color: "var(--text-tertiary)", fontWeight: 500, textDecoration: "none" }}>
+              Forgot password?
+            </a>
           </div>
 
           {error && (

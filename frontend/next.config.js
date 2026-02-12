@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  output: "standalone",
   async redirects() {
     return [
       { source: "/dashboard/entities/new", destination: "/dashboard/contacts/new", permanent: true },

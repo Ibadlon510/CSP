@@ -12,6 +12,10 @@ RUN npm ci
 # Copy frontend code
 COPY frontend/ .
 
+# Accept API URL at build time (Next.js inlines NEXT_PUBLIC_* at build)
+ARG NEXT_PUBLIC_API_URL=http://localhost:8000
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
 # Build the application
 RUN npm run build
 
@@ -20,14 +24,13 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy built application
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
+# Copy standalone build output (much smaller than full node_modules)
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 
-# Expose port
-EXPOSE 3000
+# Expose port (Render assigns $PORT dynamically; default 3000 for local)
+EXPOSE ${PORT:-3000}
 
-# Start the application
-CMD ["npm", "start"]
+# Start the standalone server — use shell form so $PORT is expanded at runtime
+CMD node server.js

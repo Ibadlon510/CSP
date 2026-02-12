@@ -47,3 +47,13 @@ export function logout() {
 export function getToken(): string | null {
   return typeof window !== "undefined" ? localStorage.getItem("token") : null;
 }
+
+export async function forgotPassword(email: string): Promise<string> {
+  const data = await api.post("/api/auth/forgot-password", { email });
+  return data.message;
+}
+
+export async function resetPassword(token: string, new_password: string): Promise<string> {
+  const data = await api.post("/api/auth/reset-password", { token, new_password });
+  return data.message;
+}

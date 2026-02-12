@@ -46,9 +46,25 @@ function fmtDate(d: string) {
 
 /* ─── Activity Map helpers ─── */
 const MAP_HOURS = [9, 10, 11, 12, 13, 14, 15, 16];
-const MAP_LABELS = ["09:00 AM", "10:00 AM", "11:00 AM", "12:00 PM", "01:00 PM", "02:00 PM", "03:00 PM", "04:00 PM"];
+const MAP_LABELS_DAILY = ["09:00 AM", "10:00 AM", "11:00 AM", "12:00 PM", "01:00 PM", "02:00 PM", "03:00 PM", "04:00 PM"];
+const DAY_NAMES_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-function getBarPosition(start: string, end: string) {
+function getWeekRange() {
+  const now = new Date();
+  const day = now.getDay();
+  const start = new Date(now); start.setDate(now.getDate() - day); start.setHours(0, 0, 0, 0);
+  const end = new Date(start); end.setDate(start.getDate() + 7);
+  return { start, end };
+}
+
+function getMonthRange() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  return { start, end, daysInMonth: new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() };
+}
+
+function getBarPositionDaily(start: string, end: string) {
   const s = new Date(start);
   const e = new Date(end);
   const startHour = s.getHours() + s.getMinutes() / 60;
@@ -59,11 +75,65 @@ function getBarPosition(start: string, end: string) {
   return { left: `${Math.max(0, left)}%`, width: `${Math.min(100 - Math.max(0, left), Math.max(width, 3))}%` };
 }
 
-function getNowPosition() {
+function getBarPositionWeekly(start: string, end: string) {
+  const s = new Date(start);
+  const e = new Date(end);
+  const dayStart = s.getDay() + s.getHours() / 24;
+  const dayEnd = e.getDay() + e.getHours() / 24;
+  const dur = Math.max(dayEnd - dayStart, 0.08);
+  const left = (dayStart / 7) * 100;
+  const width = (dur / 7) * 100;
+  return { left: `${Math.max(0, left)}%`, width: `${Math.min(100 - Math.max(0, left), Math.max(width, 2))}%` };
+}
+
+function getBarPositionMonthly(start: string, end: string, daysInMonth: number) {
+  const s = new Date(start);
+  const e = new Date(end);
+  const dayStart = (s.getDate() - 1) + s.getHours() / 24;
+  const dayEnd = (e.getDate() - 1) + e.getHours() / 24;
+  const dur = Math.max(dayEnd - dayStart, 0.3);
+  const left = (dayStart / daysInMonth) * 100;
+  const width = (dur / daysInMonth) * 100;
+  return { left: `${Math.max(0, left)}%`, width: `${Math.min(100 - Math.max(0, left), Math.max(width, 1.5))}%` };
+}
+
+function getNowPositionDaily() {
   const now = new Date();
   const hour = now.getHours() + now.getMinutes() / 60;
   const totalSpan = MAP_HOURS[MAP_HOURS.length - 1] + 1 - MAP_HOURS[0];
   return ((hour - MAP_HOURS[0]) / totalSpan) * 100;
+}
+
+function getNowPositionWeekly() {
+  const now = new Date();
+  const dayFrac = now.getDay() + now.getHours() / 24 + now.getMinutes() / 1440;
+  return (dayFrac / 7) * 100;
+}
+
+function getNowPositionMonthly(daysInMonth: number) {
+  const now = new Date();
+  const dayFrac = (now.getDate() - 1) + now.getHours() / 24;
+  return (dayFrac / daysInMonth) * 100;
+}
+
+function getMapLabels(period: "daily" | "weekly" | "monthly", daysInMonth?: number): string[] {
+  if (period === "daily") return MAP_LABELS_DAILY;
+  if (period === "weekly") return DAY_NAMES_SHORT;
+  // monthly: show 1, 5, 10, 15, 20, 25, last
+  const d = daysInMonth || 30;
+  return ["1", "5", "10", "15", "20", "25", String(d)];
+}
+
+function getBarPosition(period: "daily" | "weekly" | "monthly", start: string, end: string, daysInMonth?: number) {
+  if (period === "weekly") return getBarPositionWeekly(start, end);
+  if (period === "monthly") return getBarPositionMonthly(start, end, daysInMonth || 30);
+  return getBarPositionDaily(start, end);
+}
+
+function getNowPosition(period: "daily" | "weekly" | "monthly", daysInMonth?: number) {
+  if (period === "weekly") return getNowPositionWeekly();
+  if (period === "monthly") return getNowPositionMonthly(daysInMonth || 30);
+  return getNowPositionDaily();
 }
 
 export default function DashboardPage() {
@@ -81,12 +151,27 @@ export default function DashboardPage() {
 
   useEffect(() => {
     api.get("/api/projects/dashboard/summary").then((d: any) => setSummary(d)).catch(() => {});
-    api.get("/api/activities/today").then((d: any) => setTodayActivities(d as any[])).catch(() => {});
     api.get("/api/users/").then((d: any) => setTeamUsers(d as TeamUser[])).catch(() => {});
     api.get("/api/projects/?status=in_progress").then((d: any) => setTodayProjects((d as any[]).slice(0, 4))).catch(() => {});
   }, []);
 
-  const nowPct = getNowPosition();
+  useEffect(() => {
+    if (actMapPeriod === "daily") {
+      api.get("/api/activities/today").then((d: any) => setTodayActivities(d as any[])).catch(() => {});
+    } else if (actMapPeriod === "weekly") {
+      const { start, end } = getWeekRange();
+      api.get(`/api/activities/?start_date=${start.toISOString()}&end_date=${end.toISOString()}`)
+        .then((d: any) => setTodayActivities(d as any[])).catch(() => {});
+    } else {
+      const { start, end } = getMonthRange();
+      api.get(`/api/activities/?start_date=${start.toISOString()}&end_date=${end.toISOString()}`)
+        .then((d: any) => setTodayActivities(d as any[])).catch(() => {});
+    }
+  }, [actMapPeriod]);
+
+  const monthInfo = getMonthRange();
+  const mapLabels = getMapLabels(actMapPeriod, monthInfo.daysInMonth);
+  const nowPct = getNowPosition(actMapPeriod, monthInfo.daysInMonth);
   const actByProject = todayActivities.reduce<Record<string, any[]>>((acc, a) => {
     const key = a.project_title || "General";
     (acc[key] = acc[key] || []).push(a);
@@ -100,8 +185,9 @@ export default function DashboardPage() {
       <div className="page-header">
         <div className="page-header-content">
           <h1 className="page-title">Dashboard</h1>
+          <p className="page-subtitle">Overview of your workspace</p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div className="page-header-actions">
           <span style={{ fontSize: 12, color: "var(--text-quaternary)", display: "inline-flex", alignItems: "center", gap: 4 }}>
             <Icon path="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" size={13} />
             {new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
@@ -180,7 +266,7 @@ export default function DashboardPage() {
             <div style={{ padding: "12px 20px 20px", position: "relative" }}>
               {Object.keys(actByProject).length === 0 ? (
                 <p style={{ textAlign: "center", padding: "32px 0", color: "var(--text-quaternary)", fontSize: 13 }}>
-                  No activities scheduled for today
+                  No activities scheduled{actMapPeriod === "daily" ? " for today" : actMapPeriod === "weekly" ? " this week" : " this month"}
                 </p>
               ) : (
                 <div style={{ position: "relative" }}>
@@ -191,7 +277,7 @@ export default function DashboardPage() {
                       </div>
                       <div style={{ flex: 1, position: "relative", height: 36, background: "var(--bg-tertiary)", borderRadius: "var(--radius-md)" }}>
                         {acts.map((act: any) => {
-                          const pos = getBarPosition(act.start_datetime, act.end_datetime);
+                          const pos = getBarPosition(actMapPeriod, act.start_datetime, act.end_datetime, monthInfo.daysInMonth);
                           const tc = ACTIVITY_TYPE_CFG[act.activity_type] || ACTIVITY_TYPE_CFG.other;
                           return (
                             <div
@@ -217,7 +303,7 @@ export default function DashboardPage() {
 
                   {/* Time axis */}
                   <div style={{ display: "flex", marginLeft: 120 }}>
-                    {MAP_LABELS.map((lbl, i) => (
+                    {mapLabels.map((lbl, i) => (
                       <span key={i} style={{ flex: 1, fontSize: 10, color: "var(--text-quaternary)", fontWeight: 500 }}>{lbl}</span>
                     ))}
                   </div>

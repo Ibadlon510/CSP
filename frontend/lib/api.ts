@@ -15,7 +15,9 @@ function isNetworkError(e: unknown): boolean {
 }
 
 const CONNECTION_MSG =
-  "Cannot reach the backend. Run ./stop then ./start in the project folder, wait ~30 seconds, then open http://localhost:3000";
+  process.env.NODE_ENV === "production"
+    ? "Cannot reach the server. Please try again in a moment."
+    : "Cannot reach the backend. Run ./stop then ./start in the project folder, wait ~30 seconds, then open http://localhost:3000";
 
 async function request(path: string, options: RequestInit = {}) {
   const token =

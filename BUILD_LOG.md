@@ -526,17 +526,140 @@ Per-file checklist applied: shared Icon, statusColors, fmtCurrency/fmtDate, TabB
 
 ---
 
+## A12. Session Fixes & Refactors (Feb 12, 2026)
+
+### Theme System Refactor
+
+Replaced self-contained `ThemeToggle` (local state + `useEffect` + direct DOM manipulation) with a proper provider architecture:
+
+| File | Change |
+|------|--------|
+| `components/ThemeProvider.tsx` | **New** — React context with `useTheme()` hook (`{ theme, toggle, setTheme }`) |
+| `components/ui/ThemeToggle.tsx` | Simplified to consume `useTheme()` — no local state or DOM calls |
+| `components/Providers.tsx` | Wraps app with `<ThemeProvider>` (outer) → `<ToastProvider>` (inner) |
+| `app/layout.tsx` | Inline `<script>` in `<head>` sets `data-theme` before first paint; `suppressHydrationWarning` on `<html>` |
+| `app/(dashboard)/layout.tsx` | Theme toggle + Sign out moved into one inline flex row in sidebar footer |
+
+**Benefits**: No flash of wrong theme on load, shared theme state via context, any component can call `useTheme()`.
+
+### Activity Map Toggle Fix
+
+The dashboard "Time-Based Activity Map" daily/weekly/monthly toggle was non-functional — `actMapPeriod` state changed but the data fetch and rendering were hardcoded to daily.
+
+**Fix** (`dashboard/page.tsx`):
+- New `useEffect` keyed on `actMapPeriod`:
+  - **Daily** → `GET /api/activities/today`
+  - **Weekly** → `GET /api/activities/?start_date=...&end_date=...` (Sun–Sat)
+  - **Monthly** → `GET /api/activities/?start_date=...&end_date=...` (1st–end of month)
+- Period-aware helper functions: `getBarPositionDaily/Weekly/Monthly`, `getNowPositionDaily/Weekly/Monthly`, `getMapLabels`
+- Time axis labels adapt: hours (daily), day names (weekly), day numbers (monthly)
+- "Now" indicator positioned correctly for each timescale
+- Empty state message reflects selected period
+
+### Dependency & Script Fixes
+
+- **`@hello-pangea/dnd`**: Installed missing dependency that caused 500 errors across the app (imported by `KanbanBoard.tsx`)
+- **`./start` and `./stop` scripts**: Fixed `chmod +x` — scripts existed but lacked execute permission (exit code 126)
+- **Stale DB schema**: Deleted `csp_erp.db` and recreated — `sales_orders.created_by` column was missing from old schema
+
+### Seed Data
+
+Ran both seed scripts after fresh DB creation:
+- `seed_demo`: Org, demo user, 5 contacts, 4 products, 3 leads, 4 opportunities, 2 quotations, 2 orders, 2 invoices, 2 projects, 3 wallets, 12 documents
+- `seed_showcase`: +2 users (sarah, omar), 3 projects with 21 tasks (dependencies, multi-assignees), 16 threaded comments with reactions, 10 attachments, 2 pinned favorites, 10 activities
+
+---
+
+## A13. View Toggle Rollout (Verified Complete)
+
+`PageViewToggle` deployed on 12 list pages. `SearchFilterBar` deployed on 13 pages. All items verified:
+
+| Page | View Preset | Views Available |
+|------|------------|-----------------|
+| Tasks | `TASK_VIEWS` | Spreadsheet / Timeline / Kanban |
+| Contacts | `TASK_VIEWS` | Spreadsheet / Timeline / Kanban |
+| CRM (Leads + Pipeline) | `TASK_VIEWS` | Spreadsheet / Timeline / Kanban |
+| Quotations | `TASK_VIEWS` | Spreadsheet / Timeline / Kanban |
+| Orders | `TASK_VIEWS` | Spreadsheet / Timeline / Kanban |
+| Invoices | `TASK_VIEWS` | Spreadsheet / Timeline / Kanban |
+| Projects | `TASK_VIEWS` | Spreadsheet / Timeline / Kanban |
+| Documents | `TASK_VIEWS` | Spreadsheet / Timeline / Kanban |
+| Products | `SPREADSHEET_KANBAN_CARD_VIEWS` | Spreadsheet / Kanban / Card |
+| Wallets | `SPREADSHEET_CARD_VIEWS` | Spreadsheet / Card |
+| Calendar | Own toggle | Month / Week / Day (not standard) |
+| Users | No toggle | Table only (by design) |
+| Compliance | No toggle | Table only (by design) |
+
+**Audit results**:
+- No old `ViewToggle.tsx` file exists — only `PageViewToggle.tsx`
+- "Spreadsheet" naming used consistently — no old "table" key found
+- All status-based pages (Orders, Invoices, Quotations, Projects) already have full Spreadsheet/Kanban/Timeline
+
+---
+
+## A14. Gap Analysis, Build Hardening & Deployment Readiness (Feb 12, 2026)
+
+Full codebase audit covering build blockers, security, UI/UX unification, and production hardening. 17 fixes implemented across 3 phases.
+
+### Phase 1 — Build & Security Fixes
+
+| # | Fix | File(s) |
+|---|-----|---------|
+| 1 | Removed unused `EmailStr` import (no `email-validator` in deps) | `schemas/auth.py` |
+| 2 | Enhanced `.dockerignore` — added `node_modules.old*/`, `__pycache__/` | `.dockerignore` |
+| 3 | `NEXT_PUBLIC_API_URL` passed as Docker build arg (Next.js inlines at build time) | `Dockerfile.frontend`, `docker-compose.yml` |
+| 4 | Demo seed (`demo@csp.local`) guarded behind `DEBUG=true` — won't run in production | `main.py` |
+| 5 | Startup warning emitted if `JWT_SECRET` is the default dev value in production | `core/config.py` |
+| 6 | Backend health check added to docker-compose (`/health` endpoint) | `docker-compose.yml` |
+| 7 | Stale `package-lock 2.json` confirmed deleted | — |
+
+### Phase 2 — UI/UX Unification
+
+| # | Fix | File(s) |
+|---|-----|---------|
+| 8 | Removed duplicate `Icon` components from login page + dashboard layout; now import shared `@/components/ui/Icon` | `login/page.tsx`, `(dashboard)/layout.tsx` |
+| 9 | Quotations local `SlidePanel` (88 lines + inline keyframes) replaced with shared `SlideOverPanel` | `quotations/page.tsx` |
+| 10 | Centralized `statusColors.ts` — added rich `StatusConfig` exports for all 7 domains (contacts, quotations, orders, invoices, projects, tasks, products) with `label`, `color`, `bg` | `statusColors.ts` |
+| 11 | Dashboard + Settings headers standardized to `page-header` / `page-title` / `page-subtitle` pattern | `dashboard/page.tsx`, `settings/layout.tsx` |
+| 12 | Mobile-responsive sidebar: hamburger button, slide-in drawer, backdrop overlay, auto-close on navigation. Breakpoints: 1024px (sidebar collapses), 640px (compact padding, stacked headers) | `(dashboard)/layout.tsx`, `globals.css` |
+
+### Phase 3 — Production Hardening
+
+| # | Fix | File(s) |
+|---|-----|---------|
+| 13 | PostgreSQL connection pool config: `pool_size=10`, `max_overflow=20`, `pool_recycle=300s`, `pool_pre_ping=True` | `core/database.py` |
+| 14 | Structured logging: JSON format in production, human-readable in dev; replaces `print()` calls | `main.py` |
+| 15 | Rate limiting on `/api/auth/login` + `/register`: 10 requests/min/IP, in-memory (no Redis dependency) | `api/auth.py` |
+| 16 | Nginx reverse proxy added to docker-compose with TLS scaffold (commented HTTPS block ready for certs) | `nginx/nginx.conf`, `docker-compose.yml` |
+| 17 | Expanded `DEPLOYMENT.md` environment variables table (16 vars), security checklist updated | `DEPLOYMENT.md` |
+
+### CSS Additions
+
+New classes in `globals.css`:
+- `.dashboard-shell`, `.dashboard-sidebar`, `.dashboard-main` — replaces inline styles on layout shell
+- `.mobile-menu-btn` — fixed hamburger button (hidden on desktop, visible ≤1024px)
+- `.sidebar-backdrop` — blurred overlay for mobile sidebar
+- `@media (max-width: 1024px)` — sidebar transforms to fixed slide-in drawer
+- `@media (max-width: 640px)` — compact padding, stacked page headers
+
+### Phase 4 — Feature Completion
+
+| # | Fix | File(s) |
+|---|-----|---------|
+| 18 | Password reset flow: `POST /api/auth/forgot-password` (15-min JWT token, logged + returned in DEBUG), `POST /api/auth/reset-password` (validates token + purpose claim). Frontend: `/forgot-password` and `/reset-password?token=xxx` pages. "Forgot password?" link on login page. | `api/auth.py`, `schemas/auth.py`, `lib/auth.ts`, `forgot-password/page.tsx`, `reset-password/page.tsx`, `login/page.tsx` |
+| 19 | CSV export wired on 5 list pages (Contacts, Projects, Quotations, Orders, Invoices). Shared `exportToCsv()` utility handles CSV generation + browser download with BOM for Excel compatibility. | `lib/export.ts`, `contacts/page.tsx`, `projects/page.tsx`, `quotations/page.tsx`, `orders/page.tsx`, `invoices/page.tsx` |
+| 20 | Audit log viewer: `GET /api/audit-logs/` (admin-only, paginated, filterable by action/resource/user). Frontend page with table, pagination, action/resource filters, user avatars, formatted timestamps. Added to sidebar nav (admin roles only). | `api/audit_logs.py`, `main.py`, `audit-log/page.tsx`, `(dashboard)/layout.tsx` |
+
+### Remaining (Deferred — needs external services)
+
+| # | Item | Status |
+|---|------|--------|
+| 21 | Email notifications (SMTP integration) | Deferred — needs SMTP config |
+| 22 | Cloud storage R2/S3 (config vars exist, not wired) | Deferred — needs R2 account |
+
+---
+
 # Part B — In Progress
-
-## B1. View Toggle Rollout
-
-**Done**: `PageViewToggle` component exists. Tasks page uses all 3 views (Spreadsheet/Timeline/Kanban). `SearchFilterBar` deployed on 13 pages.
-
-**Remaining**:
-- Verify all list pages actually render the toggle (Calendar, CRM, Documents, Users, Compliance may still be table-only with hidden toggle)
-- Confirm "Spreadsheet" naming used consistently vs. old "Table" naming
-- Delete old `ViewToggle.tsx` if still present
-- Upgrade status-based pages (Orders, Invoices, Quotations, Projects) to full Spreadsheet/Kanban/Timeline
 
 ## B2. Documents App
 

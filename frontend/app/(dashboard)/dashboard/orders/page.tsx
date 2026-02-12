@@ -11,6 +11,7 @@ import { SpreadsheetView, type SpreadsheetColumn, type SpreadsheetGroup } from "
 import { KanbanView, type KanbanColumnConfig, type GenericCardData } from "@/components/ui/KanbanView";
 import { TimelineView, type TimelineItem } from "@/components/ui/TimelineView";
 import { Pill } from "@/components/ui/Pill";
+import { exportToCsv } from "@/lib/export";
 
 interface SalesOrder {
   id: string;
@@ -136,7 +137,13 @@ export default function OrdersPage() {
           <p className="page-subtitle">Convert quotes to orders and track fulfillment</p>
         </div>
         <div className="page-header-actions">
-          <button className="btn-secondary btn-sm">
+          <button className="btn-secondary btn-sm" onClick={() => exportToCsv("orders", filteredOrders, [
+            { key: "order_number", label: "Number" },
+            { key: "contact_name", label: "Contact" },
+            { key: "status", label: "Status" },
+            { key: "total", label: "Total" },
+            { key: "created_at", label: "Created" },
+          ])}>
             <Icon path="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M17 8l-5-5-5 5 M12 3v12" size={16} />
             Export
           </button>

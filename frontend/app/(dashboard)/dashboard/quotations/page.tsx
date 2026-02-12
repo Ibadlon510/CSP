@@ -12,6 +12,8 @@ import { SpreadsheetView } from "@/components/ui/SpreadsheetView";
 import { KanbanView, type KanbanColumnConfig, type GenericCardData } from "@/components/ui/KanbanView";
 import { TimelineView } from "@/components/ui/TimelineView";
 import { Pill } from "@/components/ui/Pill";
+import { SlideOverPanel } from "@/components/ui/SlideOverPanel";
+import { exportToCsv } from "@/lib/export";
 
 interface Quotation {
   id: string;
@@ -43,93 +45,7 @@ const KANBAN_COLUMNS: KanbanColumnConfig[] = QUOTE_STATUSES.map((s) => ({
   bg: STATUS_CFG[s]?.bg || "var(--bg-tertiary)",
 }));
 
-function SlidePanel({ open, onClose, title, subtitle, children, footer }: {
-  open: boolean; onClose: () => void; title: string; subtitle?: string;
-  children: React.ReactNode; footer?: React.ReactNode;
-}) {
-  if (!open) return null;
-  return (
-    <>
-      <div
-        onClick={onClose}
-        style={{
-          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
-          background: "rgba(0,0,0,0.35)",
-          backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
-          zIndex: "var(--z-modal-backdrop)" as any,
-          animation: "slidePanelOverlayIn 0.2s ease-out forwards",
-        }}
-      />
-      <div style={{
-        position: "fixed", top: 0, right: 0, bottom: 0, width: 560,
-        maxWidth: "100vw",
-        background: "var(--bg-secondary)",
-        boxShadow: "-8px 0 30px rgba(0,0,0,0.08), -2px 0 8px rgba(0,0,0,0.04)",
-        zIndex: "var(--z-modal)" as any,
-        display: "flex", flexDirection: "column",
-        animation: "slidePanelIn 0.28s cubic-bezier(0.32, 0.72, 0, 1) forwards",
-      }}>
-        {/* Header */}
-        <div style={{
-          padding: "20px 28px 16px",
-          borderBottom: "1px solid var(--border-primary)",
-          position: "sticky", top: 0,
-          background: "var(--bg-secondary)",
-          zIndex: 2,
-        }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <div style={{ flex: 1 }}>
-              <h3 style={{ fontSize: 17, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "-0.02em", lineHeight: 1.3 }}>{title}</h3>
-              {subtitle && <p style={{ fontSize: 13, color: "var(--text-tertiary)", marginTop: 3, fontWeight: 400 }}>{subtitle}</p>}
-            </div>
-            <button
-              onClick={onClose}
-              style={{
-                background: "var(--bg-tertiary)", border: "none",
-                borderRadius: "var(--radius-md)", padding: 7, cursor: "pointer",
-                color: "var(--text-tertiary)",
-                transition: "all var(--transition-fast)",
-                flexShrink: 0, marginTop: -2,
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = "var(--danger-light)"; e.currentTarget.style.color = "var(--danger)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "var(--bg-tertiary)"; e.currentTarget.style.color = "var(--text-tertiary)"; }}
-            >
-              <Icon path="M18 6L6 18M6 6l12 12" size={15} />
-            </button>
-          </div>
-        </div>
-
-        {/* Scrollable Content */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "24px 28px" }}>{children}</div>
-
-        {/* Footer */}
-        {footer && (
-          <div style={{
-            padding: "16px 28px 20px",
-            borderTop: "1px solid var(--border-primary)",
-            background: "var(--bg-secondary)",
-            position: "sticky", bottom: 0,
-            zIndex: 2,
-            display: "flex", flexDirection: "column", gap: 14,
-          }}>
-            {footer}
-          </div>
-        )}
-      </div>
-
-      <style>{`
-        @keyframes slidePanelIn {
-          from { transform: translateX(100%); }
-          to { transform: translateX(0); }
-        }
-        @keyframes slidePanelOverlayIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-      `}</style>
-    </>
-  );
-}
+/* SlidePanel removed — using shared SlideOverPanel from @/components/ui/SlideOverPanel */
 
 export default function QuotationsPage() {
   const router = useRouter();
@@ -211,7 +127,15 @@ export default function QuotationsPage() {
           <p className="page-subtitle">Create and manage sales quotes</p>
         </div>
         <div className="page-header-actions">
-          <button className="btn-secondary btn-sm">
+          <button className="btn-secondary btn-sm" onClick={() => exportToCsv("quotations", filteredQuotations, [
+            { key: "number", label: "Number" },
+            { key: "contact_name", label: "Contact" },
+            { key: "status", label: "Status" },
+            { key: "total", label: "Total" },
+            { key: "vat_amount", label: "VAT" },
+            { key: "valid_until", label: "Valid Until" },
+            { key: "created_at", label: "Created" },
+          ])}>
             <Icon path="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M17 8l-5-5-5 5 M12 3v12" size={16} />
             Export
           </button>
@@ -478,7 +402,7 @@ function NewQuotationModal({ open, onClose, onSuccess, error, setError, prefill 
   const filteredProducts = products.filter((p) => !productSearch.trim() || p.name.toLowerCase().includes(productSearch.toLowerCase()));
 
   return (
-    <SlidePanel open={open} onClose={onClose} title="New Quotation" subtitle="Create a sales quote with line items"
+    <SlideOverPanel open={open} onClose={onClose} title="New Quotation" subtitle="Create a sales quote with line items"
       footer={<>
         {/* Summary row */}
         <div style={{
@@ -902,6 +826,6 @@ function NewQuotationModal({ open, onClose, onSuccess, error, setError, prefill 
           </div>
         )}
       </form>
-    </SlidePanel>
+    </SlideOverPanel>
   );
 }

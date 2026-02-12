@@ -10,6 +10,7 @@ import { SpreadsheetView } from "@/components/ui/SpreadsheetView";
 import { KanbanView, type KanbanColumnConfig, type GenericCardData } from "@/components/ui/KanbanView";
 import { TimelineView } from "@/components/ui/TimelineView";
 import { Pill } from "@/components/ui/Pill";
+import { exportToCsv } from "@/lib/export";
 
 interface Contact {
   id: string;
@@ -103,7 +104,15 @@ export default function ContactsPage() {
           <p className="page-subtitle">Manage companies and individuals</p>
         </div>
         <div className="page-header-actions">
-          <button className="btn-secondary btn-sm" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <button className="btn-secondary btn-sm" style={{ display: "flex", alignItems: "center", gap: 6 }} onClick={() => exportToCsv("contacts", filteredContacts, [
+            { key: "name", label: "Name" },
+            { key: "contact_type", label: "Type" },
+            { key: "email", label: "Email" },
+            { key: "status", label: "Status" },
+            { key: "jurisdiction", label: "Jurisdiction" },
+            { key: "trade_license_no", label: "Trade License" },
+            { key: "license_expiry_date", label: "License Expiry" },
+          ])}>
             <Icon path="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M17 8l-5-5-5 5 M12 3v12" size={16} />
             Export
           </button>

@@ -7,17 +7,10 @@ import { getMe, logout, type User } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { DocumentViewerProvider } from "@/components/DocumentViewer";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
-
-// Modern icon system using SVG paths
-const Icon = ({ path, size = 20 }: { path: string; size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d={path} />
-  </svg>
-);
+import { Icon } from "@/components/ui/Icon";
 
 const NAV_ITEMS = [
   { label: "Dashboard", href: "/dashboard", icon: "M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z", moduleId: null as string | null },
-  { label: "My Task", href: "/dashboard/tasks", icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4", moduleId: "projects" },
   { label: "Contacts", href: "/dashboard/contacts", icon: "M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2 M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0z", moduleId: "contacts" },
   { label: "CRM", href: "/dashboard/crm", icon: "M22 12h-4l-3 9L9 3l-3 9H2", moduleId: "crm" },
   { label: "Quotations", href: "/dashboard/quotations", icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M16 13H8 M16 17H8 M10 9H8", moduleId: "quotations" },
@@ -26,10 +19,12 @@ const NAV_ITEMS = [
   { label: "Documents", href: "/dashboard/documents", icon: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z M11 3v6h6", moduleId: "documents" },
   { label: "Wallets", href: "/dashboard/wallets", icon: "M21 12V7H5a2 2 0 0 1 0-4h14v4 M3 5v14a2 2 0 0 0 2 2h16v-5 M18 12a2 2 0 0 0 0 4h4v-4h-4z", moduleId: "wallets" },
   { label: "Projects", href: "/dashboard/projects", icon: "M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2", moduleId: "projects" },
+  { label: "Task", href: "/dashboard/tasks", icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4", moduleId: "projects" },
   { label: "Calendar", href: "/dashboard/calendar", icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z", moduleId: "calendar" },
   { label: "Products", href: "/dashboard/products", icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4", moduleId: null, roles: ["super_admin", "admin", "manager"] },
   { label: "Compliance", href: "/dashboard/compliance", icon: "M9 12l2 2 4-4 M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z", moduleId: "compliance" },
   { label: "Users", href: "/dashboard/users", icon: "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2 M23 21v-2a4 4 0 0 0-3-3.87 M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0z M20 8a4 4 0 1 1 0-8", moduleId: "users" },
+  { label: "Audit Log", href: "/dashboard/audit-log", icon: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z", moduleId: null, roles: ["super_admin", "admin"] },
   { label: "Settings", href: "/dashboard/settings", icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z", moduleId: null, roles: ["super_admin", "admin", "manager", "accountant"] },
 ];
 
@@ -44,6 +39,7 @@ export default function DashboardLayout({
   const [loading, setLoading] = useState(true);
   const [enabledModules, setEnabledModules] = useState<Record<string, boolean> | null>(null);
   const [favorites, setFavorites] = useState<{ id: string; project_id: string; project_title: string; project_status?: string }[]>([]);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   function loadFavorites() {
     api.get("/api/projects/favorites").then((d: any) => setFavorites(d)).catch(() => {});
@@ -80,6 +76,11 @@ export default function DashboardLayout({
     loadFavorites();
   }, [user]);
 
+  // Close mobile sidebar on route change
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [pathname]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center" style={{ height: "100vh" }}>
@@ -89,21 +90,26 @@ export default function DashboardLayout({
   }
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "var(--bg-primary)", maxWidth: "100vw", overflowX: "hidden" }}>
-      {/* Modern Sidebar */}
-      <aside
-        style={{
-          width: 260,
-          background: "var(--sidebar-bg)",
-          borderRight: "1px solid var(--sidebar-border)",
-          display: "flex",
-          flexDirection: "column",
-          position: "sticky",
-          top: 0,
-          height: "100vh",
-          flexShrink: 0,
-        }}
+    <div className="dashboard-shell">
+      {/* Mobile hamburger button */}
+      <button
+        className="mobile-menu-btn"
+        onClick={() => setSidebarOpen(!sidebarOpen)}
+        aria-label="Toggle sidebar"
       >
+        <Icon path={sidebarOpen ? "M18 6L6 18M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"} size={20} />
+      </button>
+
+      {/* Mobile backdrop */}
+      {sidebarOpen && (
+        <div
+          className="sidebar-backdrop"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Modern Sidebar */}
+      <aside className={`dashboard-sidebar${sidebarOpen ? " open" : ""}`}>
         {/* Logo Section */}
         <div style={{ 
           padding: "24px 20px",
@@ -255,19 +261,20 @@ export default function DashboardLayout({
         <div style={{ 
           padding: "16px",
           borderTop: "1px solid var(--sidebar-border)",
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
         }}>
           <div style={{ 
             background: "var(--bg-tertiary)", 
             borderRadius: "var(--radius-lg)", 
             padding: "12px",
-            marginBottom: 12,
             border: "1px solid var(--border-primary)"
           }}>
             <div style={{
               display: "flex",
               alignItems: "center",
-              gap: 10,
-              marginBottom: 8
+              gap: 10
             }}>
               <div style={{
                 width: 32,
@@ -302,33 +309,27 @@ export default function DashboardLayout({
               </div>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <ThemeToggle />
+            <button 
+              className="btn-ghost btn-sm" 
+              style={{ 
+                flex: 1,
+                justifyContent: "center",
+                color: "var(--danger)",
+                fontWeight: 600
+              }} 
+              onClick={logout}
+            >
+              <Icon path="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9" size={16} />
+              Sign out
+            </button>
           </div>
-          <button 
-            className="btn-ghost btn-sm" 
-            style={{ 
-              width: "100%",
-              justifyContent: "center",
-              color: "var(--danger)",
-              fontWeight: 600
-            }} 
-            onClick={logout}
-          >
-            <Icon path="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9" size={16} />
-            Sign out
-          </button>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main style={{ 
-        flex: 1, 
-        padding: "32px 40px", 
-        overflow: "auto",
-        background: "var(--bg-primary)",
-        minWidth: 0
-      }}>
+      <main className="dashboard-main">
         <DocumentViewerProvider>
           {children}
         </DocumentViewerProvider>

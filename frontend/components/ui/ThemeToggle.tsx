@@ -1,25 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useTheme } from "@/components/ThemeProvider";
 import { Icon } from "./Icon";
 
 export function ThemeToggle() {
-  const [dark, setDark] = useState(false);
-
-  useEffect(() => {
-    const stored = localStorage.getItem("theme");
-    if (stored === "dark" || (!stored && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
-      setDark(true);
-      document.documentElement.setAttribute("data-theme", "dark");
-    }
-  }, []);
-
-  function toggle() {
-    const next = !dark;
-    setDark(next);
-    document.documentElement.setAttribute("data-theme", next ? "dark" : "light");
-    localStorage.setItem("theme", next ? "dark" : "light");
-  }
+  const { theme, toggle } = useTheme();
+  const dark = theme === "dark";
 
   return (
     <button

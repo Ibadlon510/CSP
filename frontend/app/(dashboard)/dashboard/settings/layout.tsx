@@ -60,13 +60,11 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
 
   return (
     <div>
-      <div style={{ marginBottom: 32 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.025em", marginBottom: 4 }}>
-          Settings
-        </h1>
-        <p style={{ fontSize: 15, color: "var(--text-tertiary)" }}>
-          System, technical info, defaults, access rights, and module configuration
-        </p>
+      <div className="page-header">
+        <div className="page-header-content">
+          <h1 className="page-title">Settings</h1>
+          <p className="page-subtitle">System, technical info, defaults, access rights, and module configuration</p>
+        </div>
       </div>
 
       <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
